@@ -37,21 +37,14 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 )
 
-// Provider hosts methods required by stats handlers.
-type Provider interface {
+// Host methods required by stats handlers.
+type StatsProvider interface {
 	// The following stats are provided by either CRI or cAdvisor.
 	//
 	// ListPodStats returns the stats of all the containers managed by pods.
 	ListPodStats() ([]statsapi.PodStats, error)
-	// ListPodStatsAndUpdateCPUNanoCoreUsage updates the cpu nano core usage for
-	// the containers and returns the stats for all the pod-managed containers.
+	// ListPodCPUAndMemoryStats returns the CPU and memory stats of all the containers managed by pods.
 	ListPodCPUAndMemoryStats() ([]statsapi.PodStats, error)
-	// ListPodStatsAndUpdateCPUNanoCoreUsage returns the stats of all the
-	// containers managed by pods and force update the cpu usageNanoCores.
-	// This is a workaround for CRI runtimes that do not integrate with
-	// cadvisor. See https://github.com/kubernetes/kubernetes/issues/72788
-	// for more details.
-	ListPodStatsAndUpdateCPUNanoCoreUsage() ([]statsapi.PodStats, error)
 	// ImageFsStats returns the stats of the image filesystem.
 	ImageFsStats() (*statsapi.FsStats, error)
 
@@ -103,12 +96,11 @@ type Provider interface {
 }
 
 type handler struct {
-	provider        Provider
+	provider        StatsProvider
 	summaryProvider SummaryProvider
 }
 
-// CreateHandlers creates the REST handlers for the stats.
-func CreateHandlers(rootPath string, provider Provider, summaryProvider SummaryProvider) *restful.WebService {
+func CreateHandlers(rootPath string, provider StatsProvider, summaryProvider SummaryProvider) *restful.WebService {
 	h := &handler{provider, summaryProvider}
 
 	ws := &restful.WebService{}
@@ -138,7 +130,7 @@ func CreateHandlers(rootPath string, provider Provider, summaryProvider SummaryP
 	return ws
 }
 
-type statsRequest struct {
+type StatsRequest struct {
 	// The name of the container for which to request stats.
 	// Default: /
 	// +optional
@@ -166,7 +158,7 @@ type statsRequest struct {
 	Subcontainers bool `json:"subcontainers,omitempty"`
 }
 
-func (r *statsRequest) cadvisorRequest() *cadvisorapi.ContainerInfoRequest {
+func (r *StatsRequest) cadvisorRequest() *cadvisorapi.ContainerInfoRequest {
 	return &cadvisorapi.ContainerInfoRequest{
 		NumStats: r.NumStats,
 		Start:    r.Start,
@@ -174,9 +166,9 @@ func (r *statsRequest) cadvisorRequest() *cadvisorapi.ContainerInfoRequest {
 	}
 }
 
-func parseStatsRequest(request *restful.Request) (statsRequest, error) {
+func parseStatsRequest(request *restful.Request) (StatsRequest, error) {
 	// Default request.
-	query := statsRequest{
+	query := StatsRequest{
 		NumStats: 60,
 	}
 

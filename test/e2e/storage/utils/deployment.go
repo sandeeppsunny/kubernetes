@@ -18,11 +18,10 @@ package utils
 
 import (
 	"path"
-	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
 )
@@ -99,8 +98,8 @@ func PatchCSIDeployment(f *framework.Framework, o PatchCSIOptions, object interf
 				// as the snapshotter here.
 				container.Args = append(container.Args, "--snapshotter="+o.NewDriverName)
 			case o.ClusterRegistrarContainerName:
-				if o.PodInfo != nil {
-					container.Args = append(container.Args, "--pod-info-mount="+strconv.FormatBool(*o.PodInfo))
+				if o.PodInfoVersion != nil {
+					container.Args = append(container.Args, "--pod-info-mount-version="+*o.PodInfoVersion)
 				}
 			}
 		}
@@ -164,6 +163,6 @@ type PatchCSIOptions struct {
 	// If non-empty, all pods are forced to run on this node.
 	NodeName string
 	// If not nil, the argument to pass to the cluster-driver-registrar's
-	// pod-info-mount argument.
-	PodInfo *bool
+	// pod-info-mount-version argument.
+	PodInfoVersion *string
 }

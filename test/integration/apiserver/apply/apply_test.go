@@ -24,7 +24,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	genericfeatures "k8s.io/apiserver/pkg/features"
@@ -107,7 +106,6 @@ func TestApplyAlsoCreates(t *testing.T) {
 			Namespace("default").
 			Resource(tc.resource).
 			Name(tc.name).
-			Param("fieldManager", "apply_test").
 			Body([]byte(tc.body)).
 			Do().
 			Get()
@@ -118,19 +116,6 @@ func TestApplyAlsoCreates(t *testing.T) {
 		_, err = client.CoreV1().RESTClient().Get().Namespace("default").Resource(tc.resource).Name(tc.name).Do().Get()
 		if err != nil {
 			t.Fatalf("Failed to retrieve object: %v", err)
-		}
-
-		// Test that we can re apply with a different field manager and don't get conflicts
-		_, err = client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
-			Namespace("default").
-			Resource(tc.resource).
-			Name(tc.name).
-			Param("fieldManager", "apply_test_2").
-			Body([]byte(tc.body)).
-			Do().
-			Get()
-		if err != nil {
-			t.Fatalf("Failed to re-apply object using Apply patch: %v", err)
 		}
 	}
 }
@@ -147,7 +132,6 @@ func TestCreateOnApplyFailsWithUID(t *testing.T) {
 		Namespace("default").
 		Resource("pods").
 		Name("test-pod-uid").
-		Param("fieldManager", "apply_test").
 		Body([]byte(`{
 			"apiVersion": "v1",
 			"kind": "Pod",
@@ -210,7 +194,6 @@ func TestApplyUpdateApplyConflictForced(t *testing.T) {
 		Namespace("default").
 		Resource("deployments").
 		Name("deployment").
-		Param("fieldManager", "apply_test").
 		Body(obj).Do().Get()
 	if err != nil {
 		t.Fatalf("Failed to create object using Apply patch: %v", err)
@@ -231,7 +214,6 @@ func TestApplyUpdateApplyConflictForced(t *testing.T) {
 		Namespace("default").
 		Resource("deployments").
 		Name("deployment").
-		Param("fieldManager", "apply_test").
 		Body([]byte(obj)).Do().Get()
 	if err == nil {
 		t.Fatalf("Expecting to get conflicts when applying object")
@@ -250,7 +232,6 @@ func TestApplyUpdateApplyConflictForced(t *testing.T) {
 		Resource("deployments").
 		Name("deployment").
 		Param("force", "true").
-		Param("fieldManager", "apply_test").
 		Body([]byte(obj)).Do().Get()
 	if err != nil {
 		t.Fatalf("Failed to apply object with force: %v", err)
@@ -268,7 +249,6 @@ func TestApplyManagedFields(t *testing.T) {
 		Namespace("default").
 		Resource("configmaps").
 		Name("test-cm").
-		Param("fieldManager", "apply_test").
 		Body([]byte(`{
 			"apiVersion": "v1",
 			"kind": "ConfigMap",
@@ -293,7 +273,6 @@ func TestApplyManagedFields(t *testing.T) {
 		Namespace("default").
 		Resource("configmaps").
 		Name("test-cm").
-		Param("fieldManager", "updater").
 		Body([]byte(`{"data":{"key": "new value"}}`)).Do().Get()
 	if err != nil {
 		t.Fatalf("Failed to patch object: %v", err)
@@ -327,7 +306,7 @@ func TestApplyManagedFields(t *testing.T) {
 			},
 			"managedFields": [
 				{
-					"manager": "apply_test",
+					"manager": "apply",
 					"operation": "Apply",
 					"apiVersion": "v1",
 					"fields": {
@@ -339,7 +318,7 @@ func TestApplyManagedFields(t *testing.T) {
 					}
 				},
 				{
-					"manager": "updater",
+					"manager": "` + accessor.GetManagedFields()[1].Manager + `",
 					"operation": "Update",
 					"apiVersion": "v1",
 					"time": "` + accessor.GetManagedFields()[1].Time.UTC().Format(time.RFC3339) + `",
@@ -381,7 +360,6 @@ func TestApplyRemovesEmptyManagedFields(t *testing.T) {
 		Namespace("default").
 		Resource("configmaps").
 		Name("test-cm").
-		Param("fieldManager", "apply_test").
 		Body(obj).
 		Do().
 		Get()
@@ -393,7 +371,6 @@ func TestApplyRemovesEmptyManagedFields(t *testing.T) {
 		Namespace("default").
 		Resource("configmaps").
 		Name("test-cm").
-		Param("fieldManager", "apply_test").
 		Body(obj).Do().Get()
 	if err != nil {
 		t.Fatalf("Failed to patch object: %v", err)
@@ -411,147 +388,5 @@ func TestApplyRemovesEmptyManagedFields(t *testing.T) {
 
 	if managed := accessor.GetManagedFields(); managed != nil {
 		t.Fatalf("Object contains unexpected managedFields: %v", managed)
-	}
-}
-
-func TestApplyRequiresFieldManager(t *testing.T) {
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, genericfeatures.ServerSideApply, true)()
-
-	_, client, closeFn := setup(t)
-	defer closeFn()
-
-	obj := []byte(`{
-		"apiVersion": "v1",
-		"kind": "ConfigMap",
-		"metadata": {
-			"name": "test-cm",
-			"namespace": "default"
-		}
-	}`)
-
-	_, err := client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
-		Namespace("default").
-		Resource("configmaps").
-		Name("test-cm").
-		Body(obj).
-		Do().
-		Get()
-	if err == nil {
-		t.Fatalf("Apply should fail to create without fieldManager")
-	}
-
-	_, err = client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
-		Namespace("default").
-		Resource("configmaps").
-		Name("test-cm").
-		Param("fieldManager", "apply_test").
-		Body(obj).
-		Do().
-		Get()
-	if err != nil {
-		t.Fatalf("Apply failed to create with fieldManager: %v", err)
-	}
-}
-
-// TestApplyRemoveContainerPort removes a container port from a deployment
-func TestApplyRemoveContainerPort(t *testing.T) {
-	defer utilfeaturetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, genericfeatures.ServerSideApply, true)()
-
-	_, client, closeFn := setup(t)
-	defer closeFn()
-
-	obj := []byte(`{
-		"apiVersion": "apps/v1",
-		"kind": "Deployment",
-		"metadata": {
-			"name": "deployment",
-			"labels": {"app": "nginx"}
-		},
-		"spec": {
-			"replicas": 3,
-			"selector": {
-				"matchLabels": {
-					"app": "nginx"
-				}
-			},
-			"template": {
-				"metadata": {
-					"labels": {
-						"app": "nginx"
-					}
-				},
-				"spec": {
-					"containers": [{
-						"name":  "nginx",
-						"image": "nginx:latest",
-						"ports": [{
-							"containerPort": 80,
-							"protocol": "TCP"
-						}]
-					}]
-				}
-			}
-		}
-	}`)
-
-	_, err := client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
-		AbsPath("/apis/apps/v1").
-		Namespace("default").
-		Resource("deployments").
-		Name("deployment").
-		Param("fieldManager", "apply_test").
-		Body(obj).Do().Get()
-	if err != nil {
-		t.Fatalf("Failed to create object using Apply patch: %v", err)
-	}
-
-	obj = []byte(`{
-		"apiVersion": "apps/v1",
-		"kind": "Deployment",
-		"metadata": {
-			"name": "deployment",
-			"labels": {"app": "nginx"}
-		},
-		"spec": {
-			"replicas": 3,
-			"selector": {
-				"matchLabels": {
-					"app": "nginx"
-				}
-			},
-			"template": {
-				"metadata": {
-					"labels": {
-						"app": "nginx"
-					}
-				},
-				"spec": {
-					"containers": [{
-						"name":  "nginx",
-						"image": "nginx:latest"
-					}]
-				}
-			}
-		}
-	}`)
-
-	_, err = client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
-		AbsPath("/apis/apps/v1").
-		Namespace("default").
-		Resource("deployments").
-		Name("deployment").
-		Param("fieldManager", "apply_test").
-		Body(obj).Do().Get()
-	if err != nil {
-		t.Fatalf("Failed to remove container port using Apply patch: %v", err)
-	}
-
-	deployment, err := client.AppsV1().Deployments("default").Get("deployment", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Failed to retrieve object: %v", err)
-	}
-
-	if len(deployment.Spec.Template.Spec.Containers[0].Ports) > 0 {
-		t.Fatalf("Expected no container ports but got: %v", deployment.Spec.Template.Spec.Containers[0].Ports)
 	}
 }

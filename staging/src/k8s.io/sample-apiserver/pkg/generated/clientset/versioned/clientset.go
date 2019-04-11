@@ -30,6 +30,8 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	WardleV1alpha1() wardlev1alpha1.WardleV1alpha1Interface
 	WardleV1beta1() wardlev1beta1.WardleV1beta1Interface
+	// Deprecated: please explicitly pick a version if possible.
+	Wardle() wardlev1beta1.WardleV1beta1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -47,6 +49,12 @@ func (c *Clientset) WardleV1alpha1() wardlev1alpha1.WardleV1alpha1Interface {
 
 // WardleV1beta1 retrieves the WardleV1beta1Client
 func (c *Clientset) WardleV1beta1() wardlev1beta1.WardleV1beta1Interface {
+	return c.wardleV1beta1
+}
+
+// Deprecated: Wardle retrieves the default version of WardleClient.
+// Please explicitly pick a version.
+func (c *Clientset) Wardle() wardlev1beta1.WardleV1beta1Interface {
 	return c.wardleV1beta1
 }
 

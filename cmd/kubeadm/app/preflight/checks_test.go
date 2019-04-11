@@ -184,13 +184,11 @@ func (pfct preflightCheckTest) Check() (warning, errorList []error) {
 	return
 }
 
-func TestRunInitNodeChecks(t *testing.T) {
+func TestRunInitMasterChecks(t *testing.T) {
 	var tests = []struct {
-		name                    string
-		cfg                     *kubeadmapi.InitConfiguration
-		expected                bool
-		isSecondaryControlPlane bool
-		downloadCerts           bool
+		name     string
+		cfg      *kubeadmapi.InitConfiguration
+		expected bool
 	}{
 		{name: "Test valid advertised address",
 			cfg: &kubeadmapi.InitConfiguration{
@@ -199,7 +197,7 @@ func TestRunInitNodeChecks(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Test CA file exists if specified",
+			name: "Test CA file exists if specfied",
 			cfg: &kubeadmapi.InitConfiguration{
 				ClusterConfiguration: kubeadmapi.ClusterConfiguration{
 					Etcd: kubeadmapi.Etcd{External: &kubeadmapi.ExternalEtcd{CAFile: "/foo"}},
@@ -208,18 +206,7 @@ func TestRunInitNodeChecks(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Skip test CA file exists if specified/download certs",
-			cfg: &kubeadmapi.InitConfiguration{
-				ClusterConfiguration: kubeadmapi.ClusterConfiguration{
-					Etcd: kubeadmapi.Etcd{External: &kubeadmapi.ExternalEtcd{CAFile: "/foo"}},
-				},
-			},
-			expected:                true,
-			isSecondaryControlPlane: true,
-			downloadCerts:           true,
-		},
-		{
-			name: "Test Cert file exists if specified",
+			name: "Test Cert file exists if specfied",
 			cfg: &kubeadmapi.InitConfiguration{
 				ClusterConfiguration: kubeadmapi.ClusterConfiguration{
 					Etcd: kubeadmapi.Etcd{External: &kubeadmapi.ExternalEtcd{CertFile: "/foo"}},
@@ -228,7 +215,7 @@ func TestRunInitNodeChecks(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Test Key file exists if specified",
+			name: "Test Key file exists if specfied",
 			cfg: &kubeadmapi.InitConfiguration{
 				ClusterConfiguration: kubeadmapi.ClusterConfiguration{
 					Etcd: kubeadmapi.Etcd{External: &kubeadmapi.ExternalEtcd{CertFile: "/foo"}},
@@ -244,11 +231,11 @@ func TestRunInitNodeChecks(t *testing.T) {
 		},
 	}
 	for _, rt := range tests {
-		// TODO: Make RunInitNodeChecks accept a ClusterConfiguration object instead of InitConfiguration
-		actual := RunInitNodeChecks(exec.New(), rt.cfg, sets.NewString(), rt.isSecondaryControlPlane, rt.downloadCerts)
+		// TODO: Make RunInitMasterChecks accept a ClusterConfiguration object instead of InitConfiguration
+		actual := RunInitMasterChecks(exec.New(), rt.cfg, sets.NewString())
 		if (actual == nil) != rt.expected {
 			t.Errorf(
-				"failed RunInitNodeChecks:\n\texpected: %t\n\t  actual: %t\n\t error: %v",
+				"failed RunInitMasterChecks:\n\texpected: %t\n\t  actual: %t\n\t error: %v",
 				rt.expected,
 				(actual == nil),
 				actual,

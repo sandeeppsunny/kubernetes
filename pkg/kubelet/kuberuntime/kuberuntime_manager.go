@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	cadvisorapi "github.com/google/cadvisor/info/v1"
@@ -33,10 +34,10 @@ import (
 	"k8s.io/client-go/tools/record"
 	ref "k8s.io/client-go/tools/reference"
 	"k8s.io/client-go/util/flowcontrol"
-	internalapi "k8s.io/cri-api/pkg/apis"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/credentialprovider"
+	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/events"
@@ -47,7 +48,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/kubelet/util/cache"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
-	"k8s.io/kubernetes/pkg/kubelet/util/logreduction"
 )
 
 const (
@@ -128,7 +128,11 @@ type kubeGenericRuntimeManager struct {
 	runtimeClassManager *runtimeclass.Manager
 
 	// Cache last per-container error message to reduce log spam
-	logReduction *logreduction.LogReduction
+	lastError map[string]string
+
+	// Time last per-container error message was printed
+	errorPrinted map[string]time.Time
+	errorMapLock sync.Mutex
 }
 
 // KubeGenericRuntime is a interface contains interfaces for container runtime and command.
@@ -183,7 +187,8 @@ func NewKubeGenericRuntimeManager(
 		internalLifecycle:   internalLifecycle,
 		legacyLogProvider:   legacyLogProvider,
 		runtimeClassManager: runtimeClassManager,
-		logReduction:        logreduction.NewLogReduction(identicalErrorDelay),
+		lastError:           make(map[string]string),
+		errorPrinted:        make(map[string]time.Time),
 	}
 
 	typedVersion, err := kubeRuntimeManager.runtimeService.Version(kubeRuntimeAPIVersion)
@@ -845,6 +850,17 @@ func (m *kubeGenericRuntimeManager) killPodWithSyncResult(pod *v1.Pod, runningPo
 	return
 }
 
+func (m *kubeGenericRuntimeManager) cleanupErrorTimeouts() {
+	m.errorMapLock.Lock()
+	defer m.errorMapLock.Unlock()
+	for name, timeout := range m.errorPrinted {
+		if time.Now().Sub(timeout) >= identicalErrorDelay {
+			delete(m.errorPrinted, name)
+			delete(m.lastError, name)
+		}
+	}
+}
+
 // GetPodStatus retrieves the status of the pod, including the
 // information of all containers in the pod that are visible in Runtime.
 func (m *kubeGenericRuntimeManager) GetPodStatus(uid kubetypes.UID, name, namespace string) (*kubecontainer.PodStatus, error) {
@@ -893,13 +909,19 @@ func (m *kubeGenericRuntimeManager) GetPodStatus(uid kubetypes.UID, name, namesp
 
 	// Get statuses of all containers visible in the pod.
 	containerStatuses, err := m.getPodContainerStatuses(uid, name, namespace)
+	m.errorMapLock.Lock()
+	defer m.errorMapLock.Unlock()
 	if err != nil {
-		if m.logReduction.ShouldMessageBePrinted(err.Error(), podFullName) {
+		lastMsg, ok := m.lastError[podFullName]
+		if !ok || err.Error() != lastMsg || time.Now().Sub(m.errorPrinted[podFullName]) >= identicalErrorDelay {
 			klog.Errorf("getPodContainerStatuses for pod %q failed: %v", podFullName, err)
+			m.errorPrinted[podFullName] = time.Now()
+			m.lastError[podFullName] = err.Error()
 		}
 		return nil, err
 	}
-	m.logReduction.ClearID(podFullName)
+	delete(m.errorPrinted, podFullName)
+	delete(m.lastError, podFullName)
 
 	return &kubecontainer.PodStatus{
 		ID:                uid,

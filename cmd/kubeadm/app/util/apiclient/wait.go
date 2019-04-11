@@ -187,7 +187,7 @@ func (w *KubeWaiter) WaitForStaticPodControlPlaneHashes(nodeName string) (map[st
 	componentHash := ""
 	var err error
 	mirrorPodHashes := map[string]string{}
-	for _, component := range constants.ControlPlaneComponents {
+	for _, component := range constants.MasterComponents {
 		err = wait.PollImmediate(constants.APICallRetryInterval, w.timeout, func() (bool, error) {
 			componentHash, err = getStaticPodSingleHash(w.client, nodeName, component)
 			if err != nil {

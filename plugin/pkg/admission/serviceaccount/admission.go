@@ -118,37 +118,37 @@ func NewServiceAccount() *serviceAccount {
 	}
 }
 
-func (s *serviceAccount) SetExternalKubeClientSet(cl kubernetes.Interface) {
-	s.client = cl
+func (a *serviceAccount) SetExternalKubeClientSet(cl kubernetes.Interface) {
+	a.client = cl
 }
 
-func (s *serviceAccount) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
+func (a *serviceAccount) SetExternalKubeInformerFactory(f informers.SharedInformerFactory) {
 	serviceAccountInformer := f.Core().V1().ServiceAccounts()
-	s.serviceAccountLister = serviceAccountInformer.Lister()
+	a.serviceAccountLister = serviceAccountInformer.Lister()
 
 	secretInformer := f.Core().V1().Secrets()
-	s.secretLister = secretInformer.Lister()
+	a.secretLister = secretInformer.Lister()
 
-	s.SetReadyFunc(func() bool {
+	a.SetReadyFunc(func() bool {
 		return serviceAccountInformer.Informer().HasSynced() && secretInformer.Informer().HasSynced()
 	})
 }
 
 // ValidateInitialization ensures an authorizer is set.
-func (s *serviceAccount) ValidateInitialization() error {
-	if s.client == nil {
+func (a *serviceAccount) ValidateInitialization() error {
+	if a.client == nil {
 		return fmt.Errorf("missing client")
 	}
-	if s.secretLister == nil {
+	if a.secretLister == nil {
 		return fmt.Errorf("missing secretLister")
 	}
-	if s.serviceAccountLister == nil {
+	if a.serviceAccountLister == nil {
 		return fmt.Errorf("missing serviceAccountLister")
 	}
 	return nil
 }
 
-func (s *serviceAccount) Admit(a admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (s *serviceAccount) Admit(a admission.Attributes) (err error) {
 	if shouldIgnore(a) {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (s *serviceAccount) Admit(a admission.Attributes, o admission.ObjectInterfa
 	// That makes the kubelet very angry and confused, and it immediately deletes the pod (because the spec doesn't match)
 	// That said, don't allow mirror pods to reference ServiceAccounts or SecretVolumeSources either
 	if _, isMirrorPod := pod.Annotations[api.MirrorPodAnnotationKey]; isMirrorPod {
-		return s.Validate(a, o)
+		return s.Validate(a)
 	}
 
 	// Set the default service account if needed
@@ -186,10 +186,10 @@ func (s *serviceAccount) Admit(a admission.Attributes, o admission.ObjectInterfa
 		}
 	}
 
-	return s.Validate(a, o)
+	return s.Validate(a)
 }
 
-func (s *serviceAccount) Validate(a admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (s *serviceAccount) Validate(a admission.Attributes) (err error) {
 	if shouldIgnore(a) {
 		return nil
 	}
@@ -304,7 +304,7 @@ func (s *serviceAccount) getServiceAccount(namespace string, name string) (*core
 		if i != 0 {
 			time.Sleep(retryInterval)
 		}
-		serviceAccount, err := s.client.CoreV1().ServiceAccounts(namespace).Get(name, metav1.GetOptions{})
+		serviceAccount, err := s.client.Core().ServiceAccounts(namespace).Get(name, metav1.GetOptions{})
 		if err == nil {
 			return serviceAccount, nil
 		}

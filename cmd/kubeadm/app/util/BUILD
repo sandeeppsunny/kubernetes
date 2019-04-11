@@ -82,7 +82,6 @@ filegroup(
         "//cmd/kubeadm/app/util/audit:all-srcs",
         "//cmd/kubeadm/app/util/certs:all-srcs",
         "//cmd/kubeadm/app/util/config:all-srcs",
-        "//cmd/kubeadm/app/util/crypto:all-srcs",
         "//cmd/kubeadm/app/util/dryrun:all-srcs",
         "//cmd/kubeadm/app/util/etcd:all-srcs",
         "//cmd/kubeadm/app/util/kubeconfig:all-srcs",

@@ -283,16 +283,14 @@ func checkEndpointSubsetFormatWithLease(e *corev1.Endpoints, expectedIPs []strin
 	return true, ipsCorrect, portsCorrect
 }
 
-func (r *leaseEndpointReconciler) RemoveEndpoints(serviceName string, ip net.IP, endpointPorts []corev1.EndpointPort) error {
+func (r *leaseEndpointReconciler) StopReconciling(serviceName string, ip net.IP, endpointPorts []corev1.EndpointPort) error {
+	r.reconcilingLock.Lock()
+	defer r.reconcilingLock.Unlock()
+	r.stopReconcilingCalled = true
+
 	if err := r.masterLeases.RemoveLease(ip.String()); err != nil {
 		return err
 	}
 
 	return r.doReconcile(serviceName, endpointPorts, true)
-}
-
-func (r *leaseEndpointReconciler) StopReconciling() {
-	r.reconcilingLock.Lock()
-	defer r.reconcilingLock.Unlock()
-	r.stopReconcilingCalled = true
 }

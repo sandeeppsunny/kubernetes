@@ -25,6 +25,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 var _ = utils.SIGDescribe("Subpath", func() {
@@ -39,13 +40,13 @@ var _ = utils.SIGDescribe("Subpath", func() {
 			secret := &v1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "my-secret"}, Data: map[string][]byte{"secret-key": []byte("secret-value")}}
 			secret, err = f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Create(secret)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
-				framework.ExpectNoError(err, "while creating secret")
+				Expect(err).ToNot(HaveOccurred(), "while creating secret")
 			}
 
 			configmap := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "my-configmap"}, Data: map[string]string{"configmap-key": "configmap-value"}}
 			configmap, err = f.ClientSet.CoreV1().ConfigMaps(f.Namespace.Name).Create(configmap)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
-				framework.ExpectNoError(err, "while creating configmap")
+				Expect(err).ToNot(HaveOccurred(), "while creating configmap")
 			}
 
 		})

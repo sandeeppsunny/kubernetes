@@ -31,7 +31,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	policy "k8s.io/api/policy/v1beta1"
-	schedulerapi "k8s.io/api/scheduling/v1"
+	schedulerapi "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -1322,6 +1322,7 @@ func reserveMemory(f *framework.Framework, id string, replicas, megabytes int, e
 	request := int64(1024 * 1024 * megabytes / replicas)
 	config := &testutils.RCConfig{
 		Client:            f.ClientSet,
+		InternalClient:    f.InternalClientset,
 		Name:              id,
 		Namespace:         f.Namespace.Name,
 		Timeout:           timeout,
@@ -1563,14 +1564,15 @@ func ScheduleAnySingleGpuPod(f *framework.Framework, id string) error {
 // ScheduleGpuPod schedules a pod which requires a given number of gpus of given type
 func ScheduleGpuPod(f *framework.Framework, id string, gpuType string, gpuLimit int64) error {
 	config := &testutils.RCConfig{
-		Client:    f.ClientSet,
-		Name:      id,
-		Namespace: f.Namespace.Name,
-		Timeout:   3 * scaleUpTimeout, // spinning up GPU node is slow
-		Image:     imageutils.GetPauseImageName(),
-		Replicas:  1,
-		GpuLimit:  gpuLimit,
-		Labels:    map[string]string{"requires-gpu": "yes"},
+		Client:         f.ClientSet,
+		InternalClient: f.InternalClientset,
+		Name:           id,
+		Namespace:      f.Namespace.Name,
+		Timeout:        3 * scaleUpTimeout, // spinning up GPU node is slow
+		Image:          imageutils.GetPauseImageName(),
+		Replicas:       1,
+		GpuLimit:       gpuLimit,
+		Labels:         map[string]string{"requires-gpu": "yes"},
 	}
 
 	if gpuType != "" {
@@ -1587,14 +1589,15 @@ func ScheduleGpuPod(f *framework.Framework, id string, gpuType string, gpuLimit 
 // Create an RC running a given number of pods with anti-affinity
 func runAntiAffinityPods(f *framework.Framework, namespace string, pods int, id string, podLabels, antiAffinityLabels map[string]string) error {
 	config := &testutils.RCConfig{
-		Affinity:  buildAntiAffinity(antiAffinityLabels),
-		Client:    f.ClientSet,
-		Name:      id,
-		Namespace: namespace,
-		Timeout:   scaleUpTimeout,
-		Image:     imageutils.GetPauseImageName(),
-		Replicas:  pods,
-		Labels:    podLabels,
+		Affinity:       buildAntiAffinity(antiAffinityLabels),
+		Client:         f.ClientSet,
+		InternalClient: f.InternalClientset,
+		Name:           id,
+		Namespace:      namespace,
+		Timeout:        scaleUpTimeout,
+		Image:          imageutils.GetPauseImageName(),
+		Replicas:       pods,
+		Labels:         podLabels,
 	}
 	err := framework.RunRC(*config)
 	if err != nil {
@@ -1609,15 +1612,16 @@ func runAntiAffinityPods(f *framework.Framework, namespace string, pods int, id 
 
 func runVolumeAntiAffinityPods(f *framework.Framework, namespace string, pods int, id string, podLabels, antiAffinityLabels map[string]string, volumes []v1.Volume) error {
 	config := &testutils.RCConfig{
-		Affinity:  buildAntiAffinity(antiAffinityLabels),
-		Volumes:   volumes,
-		Client:    f.ClientSet,
-		Name:      id,
-		Namespace: namespace,
-		Timeout:   scaleUpTimeout,
-		Image:     imageutils.GetPauseImageName(),
-		Replicas:  pods,
-		Labels:    podLabels,
+		Affinity:       buildAntiAffinity(antiAffinityLabels),
+		Volumes:        volumes,
+		Client:         f.ClientSet,
+		InternalClient: f.InternalClientset,
+		Name:           id,
+		Namespace:      namespace,
+		Timeout:        scaleUpTimeout,
+		Image:          imageutils.GetPauseImageName(),
+		Replicas:       pods,
+		Labels:         podLabels,
 	}
 	err := framework.RunRC(*config)
 	if err != nil {
@@ -1691,14 +1695,15 @@ func runReplicatedPodOnEachNode(f *framework.Framework, nodes []v1.Node, namespa
 		}
 	}
 	config := &testutils.RCConfig{
-		Client:     f.ClientSet,
-		Name:       id,
-		Namespace:  namespace,
-		Timeout:    defaultTimeout,
-		Image:      imageutils.GetPauseImageName(),
-		Replicas:   0,
-		Labels:     labels,
-		MemRequest: memRequest,
+		Client:         f.ClientSet,
+		InternalClient: f.InternalClientset,
+		Name:           id,
+		Namespace:      namespace,
+		Timeout:        defaultTimeout,
+		Image:          imageutils.GetPauseImageName(),
+		Replicas:       0,
+		Labels:         labels,
+		MemRequest:     memRequest,
 	}
 	err := framework.RunRC(*config)
 	if err != nil {
@@ -1970,7 +1975,7 @@ func createPriorityClasses(f *framework.Framework) func() {
 		highPriorityClassName:       1000,
 	}
 	for className, priority := range priorityClasses {
-		_, err := f.ClientSet.SchedulingV1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: className}, Value: priority})
+		_, err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Create(&schedulerapi.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: className}, Value: priority})
 		if err != nil {
 			klog.Errorf("Error creating priority class: %v", err)
 		}
@@ -1979,7 +1984,7 @@ func createPriorityClasses(f *framework.Framework) func() {
 
 	return func() {
 		for className := range priorityClasses {
-			err := f.ClientSet.SchedulingV1().PriorityClasses().Delete(className, nil)
+			err := f.ClientSet.SchedulingV1beta1().PriorityClasses().Delete(className, nil)
 			if err != nil {
 				klog.Errorf("Error deleting priority class: %v", err)
 			}

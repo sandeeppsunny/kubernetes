@@ -19,7 +19,6 @@ package master
 import (
 	"fmt"
 	"net"
-	"net/http"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +31,6 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/master/reconcilers"
@@ -53,7 +51,6 @@ type Controller struct {
 	ServiceClient   corev1client.ServicesGetter
 	NamespaceClient corev1client.NamespacesGetter
 	EventClient     corev1client.EventsGetter
-	healthClient    rest.Interface
 
 	ServiceClusterIPRegistry rangeallocation.RangeRegistry
 	ServiceClusterIPInterval time.Duration
@@ -83,7 +80,7 @@ type Controller struct {
 }
 
 // NewBootstrapController returns a controller for watching the core capabilities of the master
-func (c *completedConfig) NewBootstrapController(legacyRESTStorage corerest.LegacyRESTStorage, serviceClient corev1client.ServicesGetter, nsClient corev1client.NamespacesGetter, eventClient corev1client.EventsGetter, healthClient rest.Interface) *Controller {
+func (c *completedConfig) NewBootstrapController(legacyRESTStorage corerest.LegacyRESTStorage, serviceClient corev1client.ServicesGetter, nsClient corev1client.NamespacesGetter, eventClient corev1client.EventsGetter) *Controller {
 	_, publicServicePort, err := c.GenericConfig.SecureServing.HostPort()
 	if err != nil {
 		klog.Fatalf("failed to get listener address: %v", err)
@@ -98,7 +95,6 @@ func (c *completedConfig) NewBootstrapController(legacyRESTStorage corerest.Lega
 		ServiceClient:   serviceClient,
 		NamespaceClient: nsClient,
 		EventClient:     eventClient,
-		healthClient:    healthClient,
 
 		EndpointReconciler: c.ExtraConfig.EndpointReconcilerConfig.Reconciler,
 		EndpointInterval:   c.ExtraConfig.EndpointReconcilerConfig.Interval,
@@ -142,12 +138,6 @@ func (c *Controller) Start() {
 		return
 	}
 
-	// Reconcile during first run removing itself until server is ready.
-	endpointPorts := createEndpointPortSpec(c.PublicServicePort, "https", c.ExtraEndpointPorts)
-	if err := c.EndpointReconciler.RemoveEndpoints(kubernetesServiceName, c.PublicIP, endpointPorts); err != nil {
-		klog.Errorf("Unable to remove old endpoints from kubernetes service: %v", err)
-	}
-
 	repairClusterIPs := servicecontroller.NewRepair(c.ServiceClusterIPInterval, c.ServiceClient, c.EventClient, &c.ServiceClusterIPRange, c.ServiceClusterIPRegistry)
 	repairNodePorts := portallocatorcontroller.NewRepair(c.ServiceNodePortInterval, c.ServiceClient, c.EventClient, c.ServiceNodePortRange, c.ServiceNodePortRegistry)
 
@@ -159,6 +149,10 @@ func (c *Controller) Start() {
 	if err := repairNodePorts.RunOnce(); err != nil {
 		// If we fail to repair node ports apiserver is useless. We should restart and retry.
 		klog.Fatalf("Unable to perform initial service nodePort check: %v", err)
+	}
+	// Service definition is reconciled during first run to correct port and type per expectations.
+	if err := c.UpdateKubernetesService(true); err != nil {
+		klog.Errorf("Unable to perform initial Kubernetes service initialization: %v", err)
 	}
 
 	c.runner = async.NewRunner(c.RunKubernetesNamespaces, c.RunKubernetesService, repairClusterIPs.RunUntil, repairNodePorts.RunUntil)
@@ -174,8 +168,7 @@ func (c *Controller) Stop() {
 	go func() {
 		defer close(finishedReconciling)
 		klog.Infof("Shutting down kubernetes service endpoint reconciler")
-		c.EndpointReconciler.StopReconciling()
-		if err := c.EndpointReconciler.RemoveEndpoints(kubernetesServiceName, c.PublicIP, endpointPorts); err != nil {
+		if err := c.EndpointReconciler.StopReconciling(kubernetesServiceName, c.PublicIP, endpointPorts); err != nil {
 			klog.Error(err)
 		}
 	}()
@@ -185,7 +178,7 @@ func (c *Controller) Stop() {
 		// done
 	case <-time.After(2 * c.EndpointInterval):
 		// don't block server shutdown forever if we can't reach etcd to remove ourselves
-		klog.Warning("RemoveEndpoints() timed out")
+		klog.Warning("StopReconciling() timed out")
 	}
 }
 
@@ -203,14 +196,7 @@ func (c *Controller) RunKubernetesNamespaces(ch chan struct{}) {
 
 // RunKubernetesService periodically updates the kubernetes service
 func (c *Controller) RunKubernetesService(ch chan struct{}) {
-	// wait until process is ready
-	wait.PollImmediateUntil(100*time.Millisecond, func() (bool, error) {
-		var code int
-		c.healthClient.Get().AbsPath("/healthz").Do().StatusCode(&code)
-		return code == http.StatusOK, nil
-	}, ch)
-
-	wait.NonSlidingUntil(func() {
+	wait.Until(func() {
 		// Service definition is not reconciled after first
 		// run, ports and type will be corrected only during
 		// start.

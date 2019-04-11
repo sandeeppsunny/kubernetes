@@ -365,7 +365,6 @@ func (tc *patchTestCase) Run(t *testing.T) {
 	creater := runtime.ObjectCreater(scheme)
 	defaulter := runtime.ObjectDefaulter(scheme)
 	convertor := runtime.UnsafeObjectConvertor(scheme)
-	objectInterfaces := &admission.SchemeBasedObjectInterfaces{scheme}
 	kind := examplev1.SchemeGroupVersion.WithKind("Pod")
 	resource := examplev1.SchemeGroupVersion.WithResource("pods")
 	schemaReferenceObj := &examplev1.Pod{}
@@ -442,8 +441,6 @@ func (tc *patchTestCase) Run(t *testing.T) {
 			kind:            kind,
 			resource:        resource,
 
-			objectInterfaces: objectInterfaces,
-
 			hubGroupVersion: hubVersion,
 
 			createValidation: rest.ValidateAllObjectFunc,
@@ -462,7 +459,7 @@ func (tc *patchTestCase) Run(t *testing.T) {
 			trace: utiltrace.New("Patch" + name),
 		}
 
-		resultObj, _, err := p.patchResource(ctx, &RequestScope{})
+		resultObj, _, err := p.patchResource(ctx, RequestScope{})
 		if len(tc.expectedError) != 0 {
 			if err == nil || err.Error() != tc.expectedError {
 				t.Errorf("%s: expected error %v, but got %v", tc.name, tc.expectedError, err)
@@ -947,6 +944,6 @@ func (f mutateObjectUpdateFunc) Handles(operation admission.Operation) bool {
 	return true
 }
 
-func (f mutateObjectUpdateFunc) Admit(a admission.Attributes, o admission.ObjectInterfaces) (err error) {
+func (f mutateObjectUpdateFunc) Admit(a admission.Attributes) (err error) {
 	return f(a.GetObject(), a.GetOldObject())
 }

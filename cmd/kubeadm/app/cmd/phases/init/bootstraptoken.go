@@ -21,6 +21,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	clientset "k8s.io/client-go/kubernetes"
+	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow"
 	clusterinfophase "k8s.io/kubernetes/cmd/kubeadm/app/phases/bootstraptoken/clusterinfo"
@@ -44,7 +46,15 @@ var (
 		`)
 )
 
-// NewBootstrapTokenPhase returns the phase to bootstrapToken
+type bootstrapTokenData interface {
+	Cfg() *kubeadmapi.InitConfiguration
+	Client() (clientset.Interface, error)
+	KubeConfigPath() string
+	SkipTokenPrint() bool
+	Tokens() []string
+}
+
+// NewBootstrapTokenPhase returns the phase to boostrapToken
 func NewBootstrapTokenPhase() workflow.Phase {
 	return workflow.Phase{
 		Name:    "bootstrap-token",
@@ -57,12 +67,12 @@ func NewBootstrapTokenPhase() workflow.Phase {
 			options.KubeconfigPath,
 			options.SkipTokenPrint,
 		},
-		Run: runBootstrapToken,
+		Run: runBoostrapToken,
 	}
 }
 
-func runBootstrapToken(c workflow.RunData) error {
-	data, ok := c.(InitData)
+func runBoostrapToken(c workflow.RunData) error {
+	data, ok := c.(bootstrapTokenData)
 	if !ok {
 		return errors.New("bootstrap-token phase invoked with an invalid data struct")
 	}

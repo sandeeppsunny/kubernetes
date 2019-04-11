@@ -69,17 +69,18 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
 	restclient "k8s.io/client-go/rest"
 	scaleclient "k8s.io/client-go/scale"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	watchtools "k8s.io/client-go/tools/watch"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	appsinternal "k8s.io/kubernetes/pkg/apis/apps"
 	batchinternal "k8s.io/kubernetes/pkg/apis/batch"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	extensionsinternal "k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/conditions"
 	"k8s.io/kubernetes/pkg/controller"
 	nodectlr "k8s.io/kubernetes/pkg/controller/nodelifecycle"
@@ -828,7 +829,7 @@ func LogContainersInPodsWithLabels(c clientset.Interface, ns string, match map[s
 func DeleteNamespaces(c clientset.Interface, deleteFilter, skipFilter []string) ([]string, error) {
 	By("Deleting namespaces")
 	nsList, err := c.CoreV1().Namespaces().List(metav1.ListOptions{})
-	ExpectNoError(err, "Failed to get namespace list")
+	Expect(err).NotTo(HaveOccurred(), "Failed to get namespace list")
 	var deleted []string
 	var wg sync.WaitGroup
 OUTER:
@@ -1059,7 +1060,7 @@ func WaitForPersistentVolumeClaimsPhase(phase v1.PersistentVolumeClaimPhase, c c
 func findAvailableNamespaceName(baseName string, c clientset.Interface) (string, error) {
 	var name string
 	err := wait.PollImmediate(Poll, 30*time.Second, func() (bool, error) {
-		name = fmt.Sprintf("%v-%v", baseName, RandomSuffix())
+		name = fmt.Sprintf("%v-%v", baseName, randomSuffix())
 		_, err := c.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
 		if err == nil {
 			// Already taken
@@ -1834,7 +1835,7 @@ func WaitForEndpoint(c clientset.Interface, ns, name string) error {
 			Logf("Endpoint %s/%s is not ready yet", ns, name)
 			continue
 		}
-		ExpectNoError(err, "Failed to get endpoints for %s/%s", ns, name)
+		Expect(err).NotTo(HaveOccurred(), "Failed to get endpoints for %s/%s", ns, name)
 		if len(endpoint.Subsets) == 0 || len(endpoint.Subsets[0].Addresses) == 0 {
 			Logf("Endpoint %s/%s is not ready yet", ns, name)
 			continue
@@ -1866,7 +1867,7 @@ func (r podProxyResponseChecker) CheckAllResponses() (done bool, err error) {
 	successes := 0
 	options := metav1.ListOptions{LabelSelector: r.label.String()}
 	currentPods, err := r.c.CoreV1().Pods(r.ns).List(options)
-	ExpectNoError(err, "Failed to get list of currentPods in namespace: %s", r.ns)
+	Expect(err).NotTo(HaveOccurred(), "Failed to get list of currentPods in namespace: %s", r.ns)
 	for i, pod := range r.pods.Items {
 		// Check that the replica list remains unchanged, otherwise we have problems.
 		if !isElementOf(pod.UID, currentPods) {
@@ -2132,6 +2133,13 @@ func LoadConfig() (*restclient.Config, error) {
 
 	return clientcmd.NewDefaultClientConfig(*c, &clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: TestContext.Host}}).ClientConfig()
 }
+func LoadInternalClientset() (*internalclientset.Clientset, error) {
+	config, err := LoadConfig()
+	if err != nil {
+		return nil, fmt.Errorf("error creating client: %v", err.Error())
+	}
+	return internalclientset.NewForConfig(config)
+}
 
 func LoadClientset() (*clientset.Clientset, error) {
 	config, err := LoadConfig()
@@ -2146,7 +2154,7 @@ func LoadClientset() (*clientset.Clientset, error) {
 //       for pods and replication controllers so we don't
 //       need to use such a function and can instead
 //       use the UUID utility function.
-func RandomSuffix() string {
+func randomSuffix() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return strconv.Itoa(r.Int() % 10000)
 }
@@ -2295,7 +2303,7 @@ func (b kubectlBuilder) ExecOrDie() string {
 		Logf("stdout: %q", retryStr)
 		Logf("err: %v", retryErr)
 	}
-	ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 	return str
 }
 
@@ -2361,11 +2369,6 @@ func RunKubectl(args ...string) (string, error) {
 // RunKubectlOrDieInput is a convenience wrapper over kubectlBuilder that takes input to stdin
 func RunKubectlOrDieInput(data string, args ...string) string {
 	return NewKubectlCommand(args...).WithStdinData(data).ExecOrDie()
-}
-
-// RunKubectlInput is a convenience wrapper over kubectlBuilder that takes input to stdin
-func RunKubectlInput(data string, args ...string) (string, error) {
-	return NewKubectlCommand(args...).WithStdinData(data).Exec()
 }
 
 // RunKubemciWithKubeconfig is a convenience wrapper over RunKubemciCmd
@@ -2495,7 +2498,7 @@ type EventsLister func(opts metav1.ListOptions, ns string) (*v1.EventList, error
 func DumpEventsInNamespace(eventsLister EventsLister, namespace string) {
 	By(fmt.Sprintf("Collecting events from namespace %q.", namespace))
 	events, err := eventsLister(metav1.ListOptions{}, namespace)
-	ExpectNoError(err, "failed to list events in namespace %q", namespace)
+	Expect(err).NotTo(HaveOccurred(), "failed to list events in namespace %q", namespace)
 
 	By(fmt.Sprintf("Found %d events.", len(events.Items)))
 	// Sort events by their first timestamp
@@ -3307,7 +3310,7 @@ func WaitForPodsReady(c clientset.Interface, ns, name string, minReadySeconds in
 // Waits for the number of events on the given object to reach a desired count.
 func WaitForEvents(c clientset.Interface, ns string, objOrRef runtime.Object, desiredEventsCount int) error {
 	return wait.Poll(Poll, 5*time.Minute, func() (bool, error) {
-		events, err := c.CoreV1().Events(ns).Search(scheme.Scheme, objOrRef)
+		events, err := c.CoreV1().Events(ns).Search(legacyscheme.Scheme, objOrRef)
 		if err != nil {
 			return false, fmt.Errorf("error in listing events: %s", err)
 		}
@@ -3326,7 +3329,7 @@ func WaitForEvents(c clientset.Interface, ns string, objOrRef runtime.Object, de
 // Waits for the number of events on the given object to be at least a desired count.
 func WaitForPartialEvents(c clientset.Interface, ns string, objOrRef runtime.Object, atLeastEventsCount int) error {
 	return wait.Poll(Poll, 5*time.Minute, func() (bool, error) {
-		events, err := c.CoreV1().Events(ns).Search(scheme.Scheme, objOrRef)
+		events, err := c.CoreV1().Events(ns).Search(legacyscheme.Scheme, objOrRef)
 		if err != nil {
 			return false, fmt.Errorf("error in listing events: %s", err)
 		}
@@ -3478,7 +3481,7 @@ func CreateExecPodOrFail(client clientset.Interface, ns, generateName string, tw
 		tweak(execPod)
 	}
 	created, err := client.CoreV1().Pods(ns).Create(execPod)
-	ExpectNoError(err, "failed to create new exec pod in namespace: %s", ns)
+	Expect(err).NotTo(HaveOccurred(), "failed to create new exec pod in namespace: %s", ns)
 	err = wait.PollImmediate(Poll, 5*time.Minute, func() (bool, error) {
 		retrievedPod, err := client.CoreV1().Pods(execPod.Namespace).Get(created.Name, metav1.GetOptions{})
 		if err != nil {
@@ -3489,7 +3492,7 @@ func CreateExecPodOrFail(client clientset.Interface, ns, generateName string, tw
 		}
 		return retrievedPod.Status.Phase == v1.PodRunning, nil
 	})
-	ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 	return created.Name
 }
 
@@ -3514,13 +3517,13 @@ func CreatePodOrFail(c clientset.Interface, ns, name string, labels map[string]s
 		},
 	}
 	_, err := c.CoreV1().Pods(ns).Create(pod)
-	ExpectNoError(err, "failed to create pod %s in namespace %s", name, ns)
+	Expect(err).NotTo(HaveOccurred(), "failed to create pod %s in namespace %s", name, ns)
 }
 
 func DeletePodOrFail(c clientset.Interface, ns, name string) {
 	By(fmt.Sprintf("Deleting pod %s in namespace %s", name, ns))
 	err := c.CoreV1().Pods(ns).Delete(name, nil)
-	ExpectNoError(err, "failed to delete pod %s in namespace %s", name, ns)
+	Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s in namespace %s", name, ns)
 }
 
 // CheckPodsRunningReady returns whether all pods whose names are listed in
@@ -5076,7 +5079,7 @@ func DsFromManifest(url string) (*apps.DaemonSet, error) {
 		return nil, fmt.Errorf("Failed to parse data to json: %v", err)
 	}
 
-	err = runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), json, &controller)
+	err = runtime.DecodeInto(legacyscheme.Codecs.UniversalDecoder(), json, &controller)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to decode DaemonSet spec: %v", err)
 	}

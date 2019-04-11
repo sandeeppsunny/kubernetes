@@ -33,7 +33,7 @@ data:
     clusters:
     - cluster:
         certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        server: {{ .ControlPlaneEndpoint }}
+        server: {{ .MasterEndpoint }}
       name: default
     contexts:
     - context:

@@ -40,18 +40,18 @@ import (
 // - GET /nodes/<node-name> -- must return a valid Node
 // - ...all other, unknown GETs/LISTs will be logged
 type InitDryRunGetter struct {
-	controlPlaneName string
-	serviceSubnet    string
+	masterName    string
+	serviceSubnet string
 }
 
 // InitDryRunGetter should implement the DryRunGetter interface
 var _ DryRunGetter = &InitDryRunGetter{}
 
 // NewInitDryRunGetter creates a new instance of the InitDryRunGetter struct
-func NewInitDryRunGetter(controlPlaneName string, serviceSubnet string) *InitDryRunGetter {
+func NewInitDryRunGetter(masterName string, serviceSubnet string) *InitDryRunGetter {
 	return &InitDryRunGetter{
-		controlPlaneName: controlPlaneName,
-		serviceSubnet:    serviceSubnet,
+		masterName:    masterName,
+		serviceSubnet: serviceSubnet,
 	}
 }
 
@@ -122,16 +122,16 @@ func (idr *InitDryRunGetter) handleKubernetesService(action core.GetAction) (boo
 
 // handleGetNode returns a fake node object for the purpose of moving kubeadm init forwards.
 func (idr *InitDryRunGetter) handleGetNode(action core.GetAction) (bool, runtime.Object, error) {
-	if action.GetName() != idr.controlPlaneName || action.GetResource().Resource != "nodes" {
+	if action.GetName() != idr.masterName || action.GetResource().Resource != "nodes" {
 		// We can't handle this event
 		return false, nil, nil
 	}
 
 	return true, &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: idr.controlPlaneName,
+			Name: idr.masterName,
 			Labels: map[string]string{
-				"kubernetes.io/hostname": idr.controlPlaneName,
+				"kubernetes.io/hostname": idr.masterName,
 			},
 			Annotations: map[string]string{},
 		},

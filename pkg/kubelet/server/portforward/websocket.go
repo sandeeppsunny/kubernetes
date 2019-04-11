@@ -43,15 +43,15 @@ const (
 	v4Base64WebsocketProtocol = "v4." + wsstream.Base64ChannelWebSocketProtocol
 )
 
-// V4Options contains details about which streams are required for port
-// forwarding.
+// options contains details about which streams are required for
+// port forwarding.
 // All fields included in V4Options need to be expressed explicitly in the
-// CRI (k8s.io/cri-api/pkg/apis/{version}/api.proto) PortForwardRequest.
+// CRI (pkg/kubelet/apis/cri/{version}/api.proto) PortForwardRequest.
 type V4Options struct {
 	Ports []int32
 }
 
-// NewV4Options creates a new options from the Request.
+// newOptions creates a new options from the Request.
 func NewV4Options(req *http.Request) (*V4Options, error) {
 	if !wsstream.IsWebSocketRequest(req) {
 		return &V4Options{}, nil

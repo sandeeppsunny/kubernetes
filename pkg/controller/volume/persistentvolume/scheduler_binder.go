@@ -139,6 +139,15 @@ func (b *volumeBinder) GetBindingsCache() PodBindingCache {
 	return b.podBindingCache
 }
 
+func podHasClaims(pod *v1.Pod) bool {
+	for _, vol := range pod.Spec.Volumes {
+		if vol.PersistentVolumeClaim != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // FindPodVolumes caches the matching PVs and PVCs to provision per node in podBindingCache.
 // This method intentionally takes in a *v1.Node object instead of using volumebinder.nodeInformer.
 // That's necessary because some operations will need to pass in to the predicate fake node objects.
@@ -158,6 +167,11 @@ func (b *volumeBinder) FindPodVolumes(pod *v1.Pod, node *v1.Node) (unboundVolume
 			VolumeSchedulingStageFailed.WithLabelValues("predicate").Inc()
 		}
 	}()
+
+	if !podHasClaims(pod) {
+		// Fast path
+		return unboundVolumesSatisfied, boundVolumesSatisfied, nil
+	}
 
 	var (
 		matchedClaims     []*bindingInfo

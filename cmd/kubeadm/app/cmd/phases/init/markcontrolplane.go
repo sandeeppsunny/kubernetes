@@ -18,6 +18,8 @@ package phases
 
 import (
 	"github.com/pkg/errors"
+	clientset "k8s.io/client-go/kubernetes"
+	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow"
 	markcontrolplanephase "k8s.io/kubernetes/cmd/kubeadm/app/phases/markcontrolplane"
@@ -33,6 +35,12 @@ var (
 		kubeadm init phase mark-control-plane --node-name myNode
 		`)
 )
+
+type markControlPlaneData interface {
+	Cfg() *kubeadmapi.InitConfiguration
+	Client() (clientset.Interface, error)
+	DryRun() bool
+}
 
 // NewMarkControlPlanePhase creates a kubeadm workflow phase that implements mark-controlplane checks.
 func NewMarkControlPlanePhase() workflow.Phase {
@@ -50,7 +58,7 @@ func NewMarkControlPlanePhase() workflow.Phase {
 
 // runMarkControlPlane executes mark-control-plane checks logic.
 func runMarkControlPlane(c workflow.RunData) error {
-	data, ok := c.(InitData)
+	data, ok := c.(markControlPlaneData)
 	if !ok {
 		return errors.New("mark-control-plane phase invoked with an invalid data struct")
 	}

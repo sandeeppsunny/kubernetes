@@ -22,7 +22,7 @@ import (
 	cadvisorapiv1 "github.com/google/cadvisor/info/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	internalapi "k8s.io/cri-api/pkg/apis"
+	internalapi "k8s.io/kubernetes/pkg/kubelet/apis/cri"
 	statsapi "k8s.io/kubernetes/pkg/kubelet/apis/stats/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
@@ -42,10 +42,8 @@ func NewCRIStatsProvider(
 	runtimeService internalapi.RuntimeService,
 	imageService internalapi.ImageManagerService,
 	logMetricsService LogMetricsService,
-	osInterface kubecontainer.OSInterface,
 ) *StatsProvider {
-	return newStatsProvider(cadvisor, podManager, runtimeCache, newCRIStatsProvider(cadvisor, resourceAnalyzer,
-		runtimeService, imageService, logMetricsService, osInterface))
+	return newStatsProvider(cadvisor, podManager, runtimeCache, newCRIStatsProvider(cadvisor, resourceAnalyzer, runtimeService, imageService, logMetricsService))
 }
 
 // NewCadvisorStatsProvider returns a containerStatsProvider that provides both
@@ -90,7 +88,6 @@ type StatsProvider struct {
 // containers managed by pods.
 type containerStatsProvider interface {
 	ListPodStats() ([]statsapi.PodStats, error)
-	ListPodStatsAndUpdateCPUNanoCoreUsage() ([]statsapi.PodStats, error)
 	ListPodCPUAndMemoryStats() ([]statsapi.PodStats, error)
 	ImageFsStats() (*statsapi.FsStats, error)
 	ImageFsDevice() (string, error)

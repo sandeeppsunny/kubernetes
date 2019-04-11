@@ -17,7 +17,6 @@ filegroup(
         "//cluster/gce/addons:all-srcs",
         "//cluster/gce/gci:all-srcs",
         "//cluster/gce/manifests:all-srcs",
-        "//cluster/gce/windows:all-srcs",
     ],
     tags = ["automanaged"],
 )

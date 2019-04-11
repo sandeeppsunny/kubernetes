@@ -110,7 +110,6 @@ func newProxyServer(config *proxyconfigapi.KubeProxyConfiguration, cleanupAndExi
 			utilnode.GetNodeIP(client, hostname),
 			recorder,
 			healthzUpdater,
-			config.Winkernel,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create proxier: %v", err)
@@ -144,6 +143,8 @@ func newProxyServer(config *proxyconfigapi.KubeProxyConfiguration, cleanupAndExi
 		}
 		proxier = proxierUserspace
 		serviceEventHandler = proxierUserspace
+		klog.V(0).Info("Tearing down pure-winkernel proxy rules.")
+		winkernel.CleanupLeftovers()
 	}
 
 	return &ProxyServer{

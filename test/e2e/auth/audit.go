@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	auditinternal "k8s.io/apiserver/pkg/apis/audit"
-	"k8s.io/apiserver/pkg/apis/audit/v1"
+	"k8s.io/apiserver/pkg/apis/audit/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -55,8 +55,7 @@ var (
 )
 
 // TODO: Get rid of [DisabledForLargeClusters] when feature request #53455 is ready.
-// Marked as flaky until a reliable method for collecting server-side audit logs is available. See http://issue.k8s.io/74745#issuecomment-474052439
-var _ = SIGDescribe("Advanced Audit [DisabledForLargeClusters][Flaky]", func() {
+var _ = SIGDescribe("Advanced Audit [DisabledForLargeClusters]", func() {
 	f := framework.NewDefaultFramework("audit")
 	var namespace string
 	BeforeEach(func() {
@@ -735,13 +734,13 @@ func expectEvents(f *framework.Framework, expectedEvents []utils.AuditEvent) {
 			return false, err
 		}
 		defer stream.Close()
-		missingReport, err := utils.CheckAuditLines(stream, expectedEvents, v1.SchemeGroupVersion)
+		missing, err := utils.CheckAuditLines(stream, expectedEvents, v1beta1.SchemeGroupVersion)
 		if err != nil {
 			framework.Logf("Failed to observe audit events: %v", err)
-		} else if len(missingReport.MissingEvents) > 0 {
-			framework.Logf(missingReport.String())
+		} else if len(missing) > 0 {
+			framework.Logf("Events %#v not found!", missing)
 		}
-		return len(missingReport.MissingEvents) == 0, nil
+		return len(missing) == 0, nil
 	})
 	framework.ExpectNoError(err, "after %v failed to observe audit events", pollingTimeout)
 }

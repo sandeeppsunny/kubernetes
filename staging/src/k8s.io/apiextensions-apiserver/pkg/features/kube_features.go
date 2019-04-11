@@ -34,12 +34,6 @@ const (
 	// CustomResourceValidation is a list of validation methods for CustomResources
 	CustomResourceValidation utilfeature.Feature = "CustomResourceValidation"
 
-	// owner: @roycaihw, @sttts
-	// alpha: v1.14
-	//
-	// CustomResourcePublishOpenAPI enables publishing of CRD OpenAPI specs.
-	CustomResourcePublishOpenAPI utilfeature.Feature = "CustomResourcePublishOpenAPI"
-
 	// owner: @sttts, @nikhita
 	// alpha: v1.10
 	// beta: v1.11
@@ -65,5 +59,4 @@ var defaultKubernetesFeatureGates = map[utilfeature.Feature]utilfeature.FeatureS
 	CustomResourceValidation:        {Default: true, PreRelease: utilfeature.Beta},
 	CustomResourceSubresources:      {Default: true, PreRelease: utilfeature.Beta},
 	CustomResourceWebhookConversion: {Default: false, PreRelease: utilfeature.Alpha},
-	CustomResourcePublishOpenAPI:    {Default: false, PreRelease: utilfeature.Alpha},
 }

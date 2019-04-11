@@ -261,9 +261,11 @@ func (dk *BasicDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, boo
 	for _, k := range dk.index {
 		// both k and image are schemeless URLs because even though schemes are allowed
 		// in the credential configurations, we remove them in Add.
-		if matched, _ := urlsMatchStr(k, image); matched {
-			ret = append(ret, dk.creds[k]...)
+		if matched, _ := urlsMatchStr(k, image); !matched {
+			continue
 		}
+
+		ret = append(ret, dk.creds[k]...)
 	}
 
 	if len(ret) > 0 {
@@ -286,7 +288,7 @@ func (dk *lazyDockerKeyring) Lookup(image string) ([]LazyAuthConfiguration, bool
 	keyring := &BasicDockerKeyring{}
 
 	for _, p := range dk.Providers {
-		keyring.Add(p.Provide(image))
+		keyring.Add(p.Provide())
 	}
 
 	return keyring.Lookup(image)

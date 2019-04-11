@@ -66,11 +66,10 @@ func newProber(
 	refManager *kubecontainer.RefManager,
 	recorder record.EventRecorder) *prober {
 
-	const followNonLocalRedirects = false
 	return &prober{
 		exec:          execprobe.New(),
-		readinessHttp: httprobe.New(followNonLocalRedirects),
-		livenessHttp:  httprobe.New(followNonLocalRedirects),
+		readinessHttp: httprobe.New(),
+		livenessHttp:  httprobe.New(),
 		tcp:           tcprobe.New(),
 		runner:        runner,
 		refManager:    refManager,
@@ -97,7 +96,7 @@ func (pb *prober) probe(probeType probeType, pod *v1.Pod, status v1.PodStatus, c
 	}
 
 	result, output, err := pb.runProbeWithRetries(probeType, probeSpec, pod, status, container, containerID, maxProbeRetries)
-	if err != nil || (result != probe.Success && result != probe.Warning) {
+	if err != nil || result != probe.Success {
 		// Probe failed in one way or another.
 		ref, hasRef := pb.refManager.GetRef(containerID)
 		if !hasRef {
@@ -116,14 +115,7 @@ func (pb *prober) probe(probeType probeType, pod *v1.Pod, status v1.PodStatus, c
 		}
 		return results.Failure, err
 	}
-	if result == probe.Warning {
-		if ref, hasRef := pb.refManager.GetRef(containerID); hasRef {
-			pb.recorder.Eventf(ref, v1.EventTypeWarning, events.ContainerProbeWarning, "%s probe warning: %s", probeType, output)
-		}
-		klog.V(3).Infof("%s probe for %q succeeded with a warning: %s", probeType, ctrName, output)
-	} else {
-		klog.V(3).Infof("%s probe for %q succeeded", probeType, ctrName)
-	}
+	klog.V(3).Infof("%s probe for %q succeeded", probeType, ctrName)
 	return results.Success, nil
 }
 

@@ -22,7 +22,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 )
@@ -63,21 +62,18 @@ func ValidateExactArgNumber(args []string, supportedArgs []string) error {
 	return nil
 }
 
-// GetKubeConfigPath can be used to search for a kubeconfig in standard locations
-// if and empty string is passed to the function. If a non-empty string is passed
-// the function returns the same string.
-func GetKubeConfigPath(file string) string {
-	// If a value is provided respect that.
-	if file != "" {
+// FindExistingKubeConfig returns the localtion of kubeconfig
+func FindExistingKubeConfig(file string) string {
+	// The user did provide a --kubeconfig flag. Respect that and threat it as an
+	// explicit path without building a DefaultClientConfigLoadingRules object.
+	if file != kubeadmconstants.GetAdminKubeConfigPath() {
 		return file
 	}
-	// Find a config in the standard locations using DefaultClientConfigLoadingRules,
-	// but also consider the default config path.
+	// The user did not provide a --kubeconfig flag. Find a config in the standard
+	// locations using DefaultClientConfigLoadingRules, but also consider the default config path.
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	rules.Precedence = append(rules.Precedence, kubeadmconstants.GetAdminKubeConfigPath())
-	file = rules.GetDefaultFilename()
-	klog.V(1).Infof("Using kubeconfig file: %s", file)
-	return file
+	return rules.GetDefaultFilename()
 }
 
 // AddCRISocketFlag adds the cri-socket flag to the supplied flagSet

@@ -17,7 +17,6 @@ limitations under the License.
 package garbagecollector
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -68,6 +67,14 @@ func (gc *GarbageCollector) getObject(item objectReference) (*unstructured.Unstr
 	return gc.dynamicClient.Resource(resource).Namespace(resourceDefaultNamespace(namespaced, item.Namespace)).Get(item.Name, metav1.GetOptions{})
 }
 
+func (gc *GarbageCollector) updateObject(item objectReference, obj *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	resource, namespaced, err := gc.apiResource(item.APIVersion, item.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return gc.dynamicClient.Resource(resource).Namespace(resourceDefaultNamespace(namespaced, item.Namespace)).Update(obj, metav1.UpdateOptions{})
+}
+
 func (gc *GarbageCollector) patchObject(item objectReference, patch []byte, pt types.PatchType) (*unstructured.Unstructured, error) {
 	resource, namespaced, err := gc.apiResource(item.APIVersion, item.Kind)
 	if err != nil {
@@ -76,6 +83,8 @@ func (gc *GarbageCollector) patchObject(item objectReference, patch []byte, pt t
 	return gc.dynamicClient.Resource(resource).Namespace(resourceDefaultNamespace(namespaced, item.Namespace)).Patch(item.Name, pt, patch, metav1.PatchOptions{})
 }
 
+// TODO: Using Patch when strategicmerge supports deleting an entry from a
+// slice of a base type.
 func (gc *GarbageCollector) removeFinalizer(owner *node, targetFinalizer string) error {
 	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		ownerObject, err := gc.getObject(owner.identity)
@@ -103,18 +112,9 @@ func (gc *GarbageCollector) removeFinalizer(owner *node, targetFinalizer string)
 			klog.V(5).Infof("the %s finalizer is already removed from object %s", targetFinalizer, owner.identity)
 			return nil
 		}
-
 		// remove the owner from dependent's OwnerReferences
-		patch, err := json.Marshal(map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"resourceVersion": accessor.GetResourceVersion(),
-				"finalizers":      newFinalizers,
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("unable to finalize %s due to an error serializing patch: %v", owner.identity, err)
-		}
-		_, err = gc.patchObject(owner.identity, patch, types.MergePatchType)
+		ownerObject.SetFinalizers(newFinalizers)
+		_, err = gc.updateObject(owner.identity, ownerObject)
 		return err
 	})
 	if errors.IsConflict(err) {

@@ -28,6 +28,8 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	NodeV1alpha1() nodev1alpha1.NodeV1alpha1Interface
+	// Deprecated: please explicitly pick a version if possible.
+	Node() nodev1alpha1.NodeV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -39,6 +41,12 @@ type Clientset struct {
 
 // NodeV1alpha1 retrieves the NodeV1alpha1Client
 func (c *Clientset) NodeV1alpha1() nodev1alpha1.NodeV1alpha1Interface {
+	return c.nodeV1alpha1
+}
+
+// Deprecated: Node retrieves the default version of NodeClient.
+// Please explicitly pick a version.
+func (c *Clientset) Node() nodev1alpha1.NodeV1alpha1Interface {
 	return c.nodeV1alpha1
 }
 

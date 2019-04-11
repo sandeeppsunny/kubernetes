@@ -31,7 +31,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -40,30 +39,25 @@ import (
 	"k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/util/term"
 	cacheddiscovery "k8s.io/client-go/discovery/cached"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	certutil "k8s.io/client-go/util/cert"
-	"k8s.io/client-go/util/keyutil"
 	cloudprovider "k8s.io/cloud-provider"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/klog"
 	genericcontrollermanager "k8s.io/kubernetes/cmd/controller-manager/app"
+	cmoptions "k8s.io/kubernetes/cmd/controller-manager/app/options"
 	"k8s.io/kubernetes/cmd/kube-controller-manager/app/config"
 	"k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	"k8s.io/kubernetes/pkg/controller"
 	kubectrlmgrconfig "k8s.io/kubernetes/pkg/controller/apis/config"
 	serviceaccountcontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
-	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/pkg/util/configz"
 	utilflag "k8s.io/kubernetes/pkg/util/flag"
@@ -123,10 +117,7 @@ controller, and serviceaccounts controller.`,
 	namedFlagSets := s.Flags(KnownControllers(), ControllersDisabledByDefault.List())
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
-	// hoist this flag from the global flagset to preserve the commandline until
-	// the gce cloudprovider is removed.
-	globalflag.Register(namedFlagSets.FlagSet("generic"), "cloud-provider-gce-lb-src-cidrs")
-	namedFlagSets.FlagSet("generic").MarkDeprecated("cloud-provider-gce-lb-src-cidrs", "This flag will be removed once the GCE Cloud Provider is removed from kube-controller-manager")
+	cmoptions.AddCustomGlobalFlags(namedFlagSets.FlagSet("generic"))
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
@@ -201,26 +192,15 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		var clientBuilder controller.ControllerClientBuilder
 		if c.ComponentConfig.KubeCloudShared.UseServiceAccountCredentials {
 			if len(c.ComponentConfig.SAController.ServiceAccountKeyFile) == 0 {
-				// It's possible another controller process is creating the tokens for us.
+				// It'c possible another controller process is creating the tokens for us.
 				// If one isn't, we'll timeout and exit when our client builder is unable to create the tokens.
 				klog.Warningf("--use-service-account-credentials was specified without providing a --service-account-private-key-file")
 			}
-
-			if shouldTurnOnDynamicClient(c.Client) {
-				klog.V(1).Infof("using dynamic client builder")
-				//Dynamic builder will use TokenRequest feature and refresh service account token periodically
-				clientBuilder = controller.NewDynamicClientBuilder(
-					restclient.AnonymousClientConfig(c.Kubeconfig),
-					c.Client.CoreV1(),
-					"kube-system")
-			} else {
-				klog.V(1).Infof("using legacy client builder")
-				clientBuilder = controller.SAControllerClientBuilder{
-					ClientConfig:         restclient.AnonymousClientConfig(c.Kubeconfig),
-					CoreClient:           c.Client.CoreV1(),
-					AuthenticationClient: c.Client.AuthenticationV1(),
-					Namespace:            "kube-system",
-				}
+			clientBuilder = controller.SAControllerClientBuilder{
+				ClientConfig:         restclient.AnonymousClientConfig(c.Kubeconfig),
+				CoreClient:           c.Client.CoreV1(),
+				AuthenticationClient: c.Client.AuthenticationV1(),
+				Namespace:            "kube-system",
 			}
 		} else {
 			clientBuilder = rootClientBuilder
@@ -236,7 +216,6 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 
 		controllerContext.InformerFactory.Start(controllerContext.Stop)
-		controllerContext.GenericInformerFactory.Start(controllerContext.Stop)
 		close(controllerContext.InformersStarted)
 
 		select {}
@@ -290,10 +269,6 @@ type ControllerContext struct {
 
 	// InformerFactory gives access to informers for the controller.
 	InformerFactory informers.SharedInformerFactory
-
-	// GenericInformerFactory gives access to informers for typed resources
-	// and dynamic resources.
-	GenericInformerFactory controller.InformerFactory
 
 	// ComponentConfig provides access to init options for a given controller
 	ComponentConfig kubectrlmgrconfig.KubeControllerManagerConfiguration
@@ -440,9 +415,6 @@ func CreateControllerContext(s *config.CompletedConfig, rootClientBuilder, clien
 	versionedClient := rootClientBuilder.ClientOrDie("shared-informers")
 	sharedInformers := informers.NewSharedInformerFactory(versionedClient, ResyncPeriod(s)())
 
-	dynamicClient := dynamic.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("dynamic-informers"))
-	dynamicInformers := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, ResyncPeriod(s)())
-
 	// If apiserver is not running we should wait for some time and fail only then. This is particularly
 	// important when we start apiserver and controller manager at the same time.
 	if err := genericcontrollermanager.WaitForAPIServer(versionedClient, 10*time.Second); err != nil {
@@ -469,17 +441,16 @@ func CreateControllerContext(s *config.CompletedConfig, rootClientBuilder, clien
 	}
 
 	ctx := ControllerContext{
-		ClientBuilder:          clientBuilder,
-		InformerFactory:        sharedInformers,
-		GenericInformerFactory: controller.NewInformerFactory(sharedInformers, dynamicInformers),
-		ComponentConfig:        s.ComponentConfig,
-		RESTMapper:             restMapper,
-		AvailableResources:     availableResources,
-		Cloud:                  cloud,
-		LoopMode:               loopMode,
-		Stop:                   stop,
-		InformersStarted:       make(chan struct{}),
-		ResyncPeriod:           ResyncPeriod(s),
+		ClientBuilder:      clientBuilder,
+		InformerFactory:    sharedInformers,
+		ComponentConfig:    s.ComponentConfig,
+		RESTMapper:         restMapper,
+		AvailableResources: availableResources,
+		Cloud:              cloud,
+		LoopMode:           loopMode,
+		Stop:               stop,
+		InformersStarted:   make(chan struct{}),
+		ResyncPeriod:       ResyncPeriod(s),
 	}
 	return ctx, nil
 }
@@ -543,7 +514,7 @@ func (c serviceAccountTokenControllerStarter) startServiceAccountTokenController
 		klog.Warningf("%q is disabled because there is no private key", saTokenControllerName)
 		return nil, false, nil
 	}
-	privateKey, err := keyutil.PrivateKeyFromFile(ctx.ComponentConfig.SAController.ServiceAccountKeyFile)
+	privateKey, err := certutil.PrivateKeyFromFile(ctx.ComponentConfig.SAController.ServiceAccountKeyFile)
 	if err != nil {
 		return nil, true, fmt.Errorf("error reading key for service account token controller: %v", err)
 	}
@@ -591,25 +562,4 @@ func readCA(file string) ([]byte, error) {
 	}
 
 	return rootCA, err
-}
-
-func shouldTurnOnDynamicClient(client clientset.Interface) bool {
-	if !utilfeature.DefaultFeatureGate.Enabled(features.TokenRequest) {
-		return false
-	}
-	apiResourceList, err := client.Discovery().ServerResourcesForGroupVersion(v1.SchemeGroupVersion.String())
-	if err != nil {
-		klog.Warningf("fetch api resource lists failed, use legacy client builder: %v", err)
-		return false
-	}
-
-	for _, resource := range apiResourceList.APIResources {
-		if resource.Name == "serviceaccounts/token" &&
-			resource.Group == "authentication.k8s.io" &&
-			sets.NewString(resource.Verbs...).Has("create") {
-			return true
-		}
-	}
-
-	return false
 }

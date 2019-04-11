@@ -278,7 +278,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			By("Creating a new StatefulSet")
 			ss := framework.NewStatefulSet("ss2", ns, headlessSvcName, 3, nil, nil, labels)
 			sst := framework.NewStatefulSetTester(c)
-			sst.SetHTTPProbe(ss)
+			sst.SetHttpProbe(ss)
 			ss.Spec.UpdateStrategy = apps.StatefulSetUpdateStrategy{
 				Type: apps.RollingUpdateStatefulSetStrategyType,
 				RollingUpdate: func() *apps.RollingUpdateStatefulSetStrategy {
@@ -489,7 +489,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			By("Creating a new StatefulSet")
 			ss := framework.NewStatefulSet("ss2", ns, headlessSvcName, 3, nil, nil, labels)
 			sst := framework.NewStatefulSetTester(c)
-			sst.SetHTTPProbe(ss)
+			sst.SetHttpProbe(ss)
 			ss.Spec.UpdateStrategy = apps.StatefulSetUpdateStrategy{
 				Type: apps.OnDeleteStatefulSetStrategyType,
 			}
@@ -581,7 +581,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			By("Creating stateful set " + ssName + " in namespace " + ns)
 			ss := framework.NewStatefulSet(ssName, ns, headlessSvcName, 1, nil, nil, psLabels)
 			sst := framework.NewStatefulSetTester(c)
-			sst.SetHTTPProbe(ss)
+			sst.SetHttpProbe(ss)
 			ss, err = c.AppsV1().StatefulSets(ns).Create(ss)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -589,14 +589,14 @@ var _ = SIGDescribe("StatefulSet", func() {
 			sst.WaitForRunningAndReady(*ss.Spec.Replicas, ss)
 
 			By("Confirming that stateful set scale up will halt with unhealthy stateful pod")
-			sst.BreakHTTPProbe(ss)
+			sst.BreakHttpProbe(ss)
 			sst.WaitForRunningAndNotReady(*ss.Spec.Replicas, ss)
 			sst.WaitForStatusReadyReplicas(ss, 0)
 			sst.UpdateReplicas(ss, 3)
 			sst.ConfirmStatefulPodCount(1, ss, 10*time.Second, true)
 
 			By("Scaling up stateful set " + ssName + " to 3 replicas and waiting until all of them will be running in namespace " + ns)
-			sst.RestoreHTTPProbe(ss)
+			sst.RestoreHttpProbe(ss)
 			sst.WaitForRunningAndReady(3, ss)
 
 			By("Verifying that stateful set " + ssName + " was scaled up in order")
@@ -622,14 +622,14 @@ var _ = SIGDescribe("StatefulSet", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			sst.BreakHTTPProbe(ss)
+			sst.BreakHttpProbe(ss)
 			sst.WaitForStatusReadyReplicas(ss, 0)
 			sst.WaitForRunningAndNotReady(3, ss)
 			sst.UpdateReplicas(ss, 0)
 			sst.ConfirmStatefulPodCount(3, ss, 10*time.Second, true)
 
 			By("Scaling down stateful set " + ssName + " to 0 replicas and waiting until none of pods will run in namespace" + ns)
-			sst.RestoreHTTPProbe(ss)
+			sst.RestoreHttpProbe(ss)
 			sst.Scale(ss, 0)
 
 			By("Verifying that stateful set " + ssName + " was scaled down in reverse order")
@@ -662,7 +662,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			ss := framework.NewStatefulSet(ssName, ns, headlessSvcName, 1, nil, nil, psLabels)
 			ss.Spec.PodManagementPolicy = apps.ParallelPodManagement
 			sst := framework.NewStatefulSetTester(c)
-			sst.SetHTTPProbe(ss)
+			sst.SetHttpProbe(ss)
 			ss, err := c.AppsV1().StatefulSets(ns).Create(ss)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -670,25 +670,25 @@ var _ = SIGDescribe("StatefulSet", func() {
 			sst.WaitForRunningAndReady(*ss.Spec.Replicas, ss)
 
 			By("Confirming that stateful set scale up will not halt with unhealthy stateful pod")
-			sst.BreakHTTPProbe(ss)
+			sst.BreakHttpProbe(ss)
 			sst.WaitForRunningAndNotReady(*ss.Spec.Replicas, ss)
 			sst.WaitForStatusReadyReplicas(ss, 0)
 			sst.UpdateReplicas(ss, 3)
 			sst.ConfirmStatefulPodCount(3, ss, 10*time.Second, false)
 
 			By("Scaling up stateful set " + ssName + " to 3 replicas and waiting until all of them will be running in namespace " + ns)
-			sst.RestoreHTTPProbe(ss)
+			sst.RestoreHttpProbe(ss)
 			sst.WaitForRunningAndReady(3, ss)
 
 			By("Scale down will not halt with unhealthy stateful pod")
-			sst.BreakHTTPProbe(ss)
+			sst.BreakHttpProbe(ss)
 			sst.WaitForStatusReadyReplicas(ss, 0)
 			sst.WaitForRunningAndNotReady(3, ss)
 			sst.UpdateReplicas(ss, 0)
 			sst.ConfirmStatefulPodCount(0, ss, 10*time.Second, false)
 
 			By("Scaling down stateful set " + ssName + " to 0 replicas and waiting until none of pods will run in namespace" + ns)
-			sst.RestoreHTTPProbe(ss)
+			sst.RestoreHttpProbe(ss)
 			sst.Scale(ss, 0)
 			sst.WaitForStatusReplicas(ss, 0)
 		})
@@ -788,7 +788,7 @@ var _ = SIGDescribe("StatefulSet", func() {
 			By("Creating statefulset " + ssName + " in namespace " + ns)
 			ss := framework.NewStatefulSet(ssName, ns, headlessSvcName, 1, nil, nil, labels)
 			sst := framework.NewStatefulSetTester(c)
-			sst.SetHTTPProbe(ss)
+			sst.SetHttpProbe(ss)
 			ss, err := c.AppsV1().StatefulSets(ns).Create(ss)
 			Expect(err).NotTo(HaveOccurred())
 			sst.WaitForRunningAndReady(*ss.Spec.Replicas, ss)
@@ -1083,7 +1083,7 @@ func pollReadWithTimeout(statefulPod statefulPodTester, statefulPodNumber int, k
 // PVCs and one using no storage.
 func rollbackTest(c clientset.Interface, ns string, ss *apps.StatefulSet) {
 	sst := framework.NewStatefulSetTester(c)
-	sst.SetHTTPProbe(ss)
+	sst.SetHttpProbe(ss)
 	ss, err := c.AppsV1().StatefulSets(ns).Create(ss)
 	Expect(err).NotTo(HaveOccurred())
 	sst.WaitForRunningAndReady(*ss.Spec.Replicas, ss)
@@ -1102,7 +1102,7 @@ func rollbackTest(c clientset.Interface, ns string, ss *apps.StatefulSet) {
 				currentRevision))
 	}
 	sst.SortStatefulPods(pods)
-	err = sst.BreakPodHTTPProbe(ss, &pods.Items[1])
+	err = sst.BreakPodHttpProbe(ss, &pods.Items[1])
 	Expect(err).NotTo(HaveOccurred())
 	ss, pods = sst.WaitForPodNotReady(ss, pods.Items[1].Name)
 	newImage := NewNginxImage
@@ -1124,7 +1124,7 @@ func rollbackTest(c clientset.Interface, ns string, ss *apps.StatefulSet) {
 	By("Updating Pods in reverse ordinal order")
 	pods = sst.GetPodList(ss)
 	sst.SortStatefulPods(pods)
-	err = sst.RestorePodHTTPProbe(ss, &pods.Items[1])
+	err = sst.RestorePodHttpProbe(ss, &pods.Items[1])
 	Expect(err).NotTo(HaveOccurred())
 	ss, pods = sst.WaitForPodReady(ss, pods.Items[1].Name)
 	ss, pods = sst.WaitForRollingUpdate(ss)
@@ -1150,7 +1150,7 @@ func rollbackTest(c clientset.Interface, ns string, ss *apps.StatefulSet) {
 	}
 
 	By("Rolling back to a previous revision")
-	err = sst.BreakPodHTTPProbe(ss, &pods.Items[1])
+	err = sst.BreakPodHttpProbe(ss, &pods.Items[1])
 	Expect(err).NotTo(HaveOccurred())
 	ss, pods = sst.WaitForPodNotReady(ss, pods.Items[1].Name)
 	priorRevision := currentRevision
@@ -1169,7 +1169,7 @@ func rollbackTest(c clientset.Interface, ns string, ss *apps.StatefulSet) {
 	By("Rolling back update in reverse ordinal order")
 	pods = sst.GetPodList(ss)
 	sst.SortStatefulPods(pods)
-	sst.RestorePodHTTPProbe(ss, &pods.Items[1])
+	sst.RestorePodHttpProbe(ss, &pods.Items[1])
 	ss, pods = sst.WaitForPodReady(ss, pods.Items[1].Name)
 	ss, pods = sst.WaitForRollingUpdate(ss)
 	Expect(ss.Status.CurrentRevision).To(Equal(priorRevision),

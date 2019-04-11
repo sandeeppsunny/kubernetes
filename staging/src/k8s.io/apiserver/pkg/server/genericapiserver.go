@@ -258,13 +258,10 @@ func (s *GenericAPIServer) PrepareRun() preparedGenericAPIServer {
 
 	// Register audit backend preShutdownHook.
 	if s.AuditBackend != nil {
-		err := s.AddPreShutdownHook("audit-backend", func() error {
+		s.AddPreShutdownHook("audit-backend", func() error {
 			s.AuditBackend.Shutdown()
 			return nil
 		})
-		if err != nil {
-			klog.Errorf("Failed to add pre-shutdown hook for audit-backend %s", err)
-		}
 	}
 
 	return preparedGenericAPIServer{s}

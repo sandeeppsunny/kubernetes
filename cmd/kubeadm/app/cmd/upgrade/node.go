@@ -18,6 +18,7 @@ package upgrade
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -42,7 +43,7 @@ var (
 	upgradeNodeConfigLongDesc = normalizer.LongDesc(`
 		Downloads the kubelet configuration from a ConfigMap of the form "kubelet-config-1.X" in the cluster,
 		where X is the minor version of the kubelet. kubeadm uses the --kubelet-version parameter to determine
-		what the _desired_ kubelet version is. Give
+		what the _desired_ kubelet version is. Give 
 		`)
 
 	upgradeNodeConfigExample = normalizer.Examples(fmt.Sprintf(`
@@ -102,7 +103,7 @@ func NewCmdUpgradeNodeConfig() *cobra.Command {
 	}
 
 	options.AddKubeConfigFlag(cmd.Flags(), &flags.kubeConfigPath)
-	cmd.Flags().BoolVar(&flags.dryRun, options.DryRun, flags.dryRun, "Do not change any state, just output the actions that would be performed.")
+	cmd.Flags().BoolVar(&flags.dryRun, "dry-run", flags.dryRun, "Do not change any state, just output the actions that would be performed.")
 	cmd.Flags().StringVar(&flags.kubeletVersionStr, "kubelet-version", flags.kubeletVersionStr, "The *desired* version for the kubelet after the upgrade.")
 	return cmd
 }
@@ -149,7 +150,7 @@ func NewCmdUpgradeControlPlane() *cobra.Command {
 	}
 
 	options.AddKubeConfigFlag(cmd.Flags(), &flags.kubeConfigPath)
-	cmd.Flags().BoolVar(&flags.dryRun, options.DryRun, flags.dryRun, "Do not change any state, just output the actions that would be performed.")
+	cmd.Flags().BoolVar(&flags.dryRun, "dry-run", flags.dryRun, "Do not change any state, just output the actions that would be performed.")
 	cmd.Flags().BoolVar(&flags.etcdUpgrade, "etcd-upgrade", flags.etcdUpgrade, "Perform the upgrade of etcd.")
 	return cmd
 }
@@ -161,7 +162,7 @@ func RunUpgradeNodeConfig(flags *nodeUpgradeFlags) error {
 	}
 
 	// Set up the kubelet directory to use. If dry-running, use a fake directory
-	kubeletDir, err := upgrade.GetKubeletDir(flags.dryRun)
+	kubeletDir, err := getKubeletDir(flags.dryRun)
 	if err != nil {
 		return err
 	}
@@ -189,6 +190,18 @@ func RunUpgradeNodeConfig(flags *nodeUpgradeFlags) error {
 	fmt.Println("[upgrade] The configuration for this node was successfully updated!")
 	fmt.Println("[upgrade] Now you should go ahead and upgrade the kubelet package using your package manager.")
 	return nil
+}
+
+// getKubeletDir gets the kubelet directory based on whether the user is dry-running this command or not.
+func getKubeletDir(dryRun bool) (string, error) {
+	if dryRun {
+		dryRunDir, err := ioutil.TempDir("", "kubeadm-init-dryrun")
+		if err != nil {
+			return "", errors.Wrap(err, "couldn't create a temporary directory")
+		}
+		return dryRunDir, nil
+	}
+	return constants.KubeletRunDirectory, nil
 }
 
 // printFilesIfDryRunning prints the Static Pod manifests to stdout and informs about the temporary directory to go and lookup

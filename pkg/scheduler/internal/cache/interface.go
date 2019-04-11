@@ -95,10 +95,10 @@ type Cache interface {
 	// RemoveNode removes overall information about node.
 	RemoveNode(node *v1.Node) error
 
-	// UpdateNodeInfoSnapshot updates the passed infoSnapshot to the current contents of Cache.
+	// UpdateNodeNameToInfoMap updates the passed infoMap to the current contents of Cache.
 	// The node info contains aggregated information of pods scheduled (including assumed to be)
 	// on this node.
-	UpdateNodeInfoSnapshot(nodeSnapshot *NodeInfoSnapshot) error
+	UpdateNodeNameToInfoMap(infoMap map[string]*schedulernodeinfo.NodeInfo) error
 
 	// List lists all cached pods (including assumed ones).
 	List(labels.Selector) ([]*v1.Pod, error)
@@ -117,12 +117,4 @@ type Cache interface {
 type Snapshot struct {
 	AssumedPods map[string]bool
 	Nodes       map[string]*schedulernodeinfo.NodeInfo
-}
-
-// NodeInfoSnapshot is a snapshot of cache NodeInfo. The scheduler takes a
-// snapshot at the beginning of each scheduling cycle and uses it for its
-// operations in that cycle.
-type NodeInfoSnapshot struct {
-	NodeInfoMap map[string]*schedulernodeinfo.NodeInfo
-	Generation  int64
 }

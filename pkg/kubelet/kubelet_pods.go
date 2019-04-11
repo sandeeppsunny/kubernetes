@@ -40,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilvalidation "k8s.io/apimachinery/pkg/util/validation"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/api/v1/resource"
@@ -49,6 +48,7 @@ import (
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/fieldpath"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/envvars"
@@ -61,7 +61,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
 	mountutil "k8s.io/kubernetes/pkg/util/mount"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
-	"k8s.io/kubernetes/pkg/volume/util/subpath"
 	"k8s.io/kubernetes/pkg/volume/util/volumepathhandler"
 	volumevalidation "k8s.io/kubernetes/pkg/volume/validation"
 	"k8s.io/kubernetes/third_party/forked/golang/expansion"
@@ -128,7 +127,7 @@ func (kl *Kubelet) makeBlockVolumes(pod *v1.Pod, container *v1.Container, podVol
 }
 
 // makeMounts determines the mount points for the given container.
-func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap, mounter mountutil.Interface, subpather subpath.Interface, expandEnvs []kubecontainer.EnvVar) ([]kubecontainer.Mount, func(), error) {
+func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, hostDomain, podIP string, podVolumes kubecontainer.VolumeMap, mounter mountutil.Interface, expandEnvs []kubecontainer.EnvVar) ([]kubecontainer.Mount, func(), error) {
 	// Kubernetes only mounts on /etc/hosts if:
 	// - container is not an infrastructure (pause) container
 	// - container is not already mounting on /etc/hosts
@@ -160,40 +159,27 @@ func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, h
 		if err != nil {
 			return nil, cleanupAction, err
 		}
-
-		subPath := mount.SubPath
-		if mount.SubPathExpr != "" {
+		if mount.SubPath != "" {
 			if !utilfeature.DefaultFeatureGate.Enabled(features.VolumeSubpath) {
 				return nil, cleanupAction, fmt.Errorf("volume subpaths are disabled")
 			}
 
-			if !utilfeature.DefaultFeatureGate.Enabled(features.VolumeSubpathEnvExpansion) {
-				return nil, cleanupAction, fmt.Errorf("volume subpath expansion is disabled")
+			// Expand subpath variables
+			if utilfeature.DefaultFeatureGate.Enabled(features.VolumeSubpathEnvExpansion) {
+				mount.SubPath = kubecontainer.ExpandContainerVolumeMounts(mount, expandEnvs)
 			}
 
-			subPath, err = kubecontainer.ExpandContainerVolumeMounts(mount, expandEnvs)
+			if filepath.IsAbs(mount.SubPath) {
+				return nil, cleanupAction, fmt.Errorf("error SubPath `%s` must not be an absolute path", mount.SubPath)
+			}
 
+			err = volumevalidation.ValidatePathNoBacksteps(mount.SubPath)
 			if err != nil {
-				return nil, cleanupAction, err
-			}
-		}
-
-		if subPath != "" {
-			if !utilfeature.DefaultFeatureGate.Enabled(features.VolumeSubpath) {
-				return nil, cleanupAction, fmt.Errorf("volume subpaths are disabled")
-			}
-
-			if filepath.IsAbs(subPath) {
-				return nil, cleanupAction, fmt.Errorf("error SubPath `%s` must not be an absolute path", subPath)
-			}
-
-			err = volumevalidation.ValidatePathNoBacksteps(subPath)
-			if err != nil {
-				return nil, cleanupAction, fmt.Errorf("unable to provision SubPath `%s`: %v", subPath, err)
+				return nil, cleanupAction, fmt.Errorf("unable to provision SubPath `%s`: %v", mount.SubPath, err)
 			}
 
 			volumePath := hostPath
-			hostPath = filepath.Join(volumePath, subPath)
+			hostPath = filepath.Join(volumePath, mount.SubPath)
 
 			if subPathExists, err := mounter.ExistsPath(hostPath); err != nil {
 				klog.Errorf("Could not determine if subPath %s exists; will not attempt to change its permissions", hostPath)
@@ -207,13 +193,13 @@ func makeMounts(pod *v1.Pod, podDir string, container *v1.Container, hostName, h
 				if err != nil {
 					return nil, cleanupAction, err
 				}
-				if err := subpather.SafeMakeDir(subPath, volumePath, perm); err != nil {
+				if err := mounter.SafeMakeDir(mount.SubPath, volumePath, perm); err != nil {
 					// Don't pass detailed error back to the user because it could give information about host filesystem
 					klog.Errorf("failed to create subPath directory for volumeMount %q of container %q: %v", mount.Name, container.Name, err)
 					return nil, cleanupAction, fmt.Errorf("failed to create subPath directory for volumeMount %q of container %q", mount.Name, container.Name)
 				}
 			}
-			hostPath, cleanupAction, err = subpather.PrepareSafeSubpath(subpath.Subpath{
+			hostPath, cleanupAction, err = mounter.PrepareSafeSubpath(mountutil.Subpath{
 				VolumeMountIndex: i,
 				Path:             hostPath,
 				VolumeName:       vol.InnerVolumeSpecName,
@@ -465,7 +451,7 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *v1.Pod, container *v1.Contai
 	}
 	opts.Envs = append(opts.Envs, envs...)
 
-	mounts, cleanupAction, err := makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes, kl.mounter, kl.subpather, opts.Envs)
+	mounts, cleanupAction, err := makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes, kl.mounter, opts.Envs)
 	if err != nil {
 		return nil, cleanupAction, err
 	}
@@ -546,11 +532,11 @@ func (kl *Kubelet) getServiceEnvVarMap(ns string, enableServiceLinks bool) (map[
 
 // Make the environment variables for a pod in the given namespace.
 func (kl *Kubelet) makeEnvironmentVariables(pod *v1.Pod, container *v1.Container, podIP string) ([]kubecontainer.EnvVar, error) {
-	if pod.Spec.EnableServiceLinks == nil {
-		return nil, fmt.Errorf("nil pod.spec.enableServiceLinks encountered, cannot construct envvars")
-	}
-
 	var result []kubecontainer.EnvVar
+	enableServiceLinks := v1.DefaultEnableServiceLinks
+	if pod.Spec.EnableServiceLinks != nil {
+		enableServiceLinks = *pod.Spec.EnableServiceLinks
+	}
 	// Note:  These are added to the docker Config, but are not included in the checksum computed
 	// by kubecontainer.HashContainer(...).  That way, we can still determine whether an
 	// v1.Container is already running by its hash. (We don't want to restart a container just
@@ -560,7 +546,7 @@ func (kl *Kubelet) makeEnvironmentVariables(pod *v1.Pod, container *v1.Container
 	// To avoid this users can: (1) wait between starting a service and starting; or (2) detect
 	// missing service env var and exit and be restarted; or (3) use DNS instead of env vars
 	// and keep trying to resolve the DNS name of the service (recommended).
-	serviceEnv, err := kl.getServiceEnvVarMap(pod.Namespace, *pod.Spec.EnableServiceLinks)
+	serviceEnv, err := kl.getServiceEnvVarMap(pod.Namespace, enableServiceLinks)
 	if err != nil {
 		return result, err
 	}
@@ -1220,6 +1206,7 @@ func (kl *Kubelet) GetKubeletContainerLogs(ctx context.Context, podFullName, con
 
 // getPhase returns the phase of a pod given its container info.
 func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
+	initialized := 0
 	pendingInitialization := 0
 	failedInitialization := 0
 	for _, container := range spec.InitContainers {
@@ -1233,12 +1220,16 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 		case containerStatus.State.Running != nil:
 			pendingInitialization++
 		case containerStatus.State.Terminated != nil:
-			if containerStatus.State.Terminated.ExitCode != 0 {
+			if containerStatus.State.Terminated.ExitCode == 0 {
+				initialized++
+			} else {
 				failedInitialization++
 			}
 		case containerStatus.State.Waiting != nil:
 			if containerStatus.LastTerminationState.Terminated != nil {
-				if containerStatus.LastTerminationState.Terminated.ExitCode != 0 {
+				if containerStatus.LastTerminationState.Terminated.ExitCode == 0 {
+					initialized++
+				} else {
 					failedInitialization++
 				}
 			} else {
@@ -1253,6 +1244,7 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 	running := 0
 	waiting := 0
 	stopped := 0
+	failed := 0
 	succeeded := 0
 	for _, container := range spec.Containers {
 		containerStatus, ok := podutil.GetContainerStatus(info, container.Name)
@@ -1268,6 +1260,8 @@ func getPhase(spec *v1.PodSpec, info []v1.ContainerStatus) v1.PodPhase {
 			stopped++
 			if containerStatus.State.Terminated.ExitCode == 0 {
 				succeeded++
+			} else {
+				failed++
 			}
 		case containerStatus.State.Waiting != nil:
 			if containerStatus.LastTerminationState.Terminated != nil {

@@ -23,7 +23,6 @@ filegroup(
     srcs = [
         ":package-srcs",
         "//vendor/gonum.org/v1/gonum/blas/blas64:all-srcs",
-        "//vendor/gonum.org/v1/gonum/blas/cblas128:all-srcs",
         "//vendor/gonum.org/v1/gonum/blas/gonum:all-srcs",
     ],
     tags = ["automanaged"],

@@ -39,7 +39,7 @@ func MarkControlPlane(client clientset.Interface, controlPlaneName string, taint
 	}
 
 	return apiclient.PatchNode(client, controlPlaneName, func(n *v1.Node) {
-		markControlPlaneNode(n, taints)
+		markMasterNode(n, taints)
 	})
 }
 
@@ -53,7 +53,7 @@ func taintExists(taint v1.Taint, taints []v1.Taint) bool {
 	return false
 }
 
-func markControlPlaneNode(n *v1.Node, taints []v1.Taint) {
+func markMasterNode(n *v1.Node, taints []v1.Taint) {
 	n.ObjectMeta.Labels[constants.LabelNodeRoleMaster] = ""
 
 	for _, nt := range n.Spec.Taints {

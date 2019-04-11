@@ -64,7 +64,6 @@ func TestParseConfig(t *testing.T) {
 		"primaryScaleSetName": "primaryScaleSetName",
 		"resourceGroup": "resourceGroup",
 		"routeTableName": "routeTableName",
-		"routeTableResourceGroup": "routeTableResourceGroup",
 		"securityGroupName": "securityGroupName",
 		"subnetName": "subnetName",
 		"subscriptionId": "subscriptionId",
@@ -100,9 +99,8 @@ func TestParseConfig(t *testing.T) {
 		MaximumLoadBalancerRuleCount:      1,
 		PrimaryAvailabilitySetName:        "primaryAvailabilitySetName",
 		PrimaryScaleSetName:               "primaryScaleSetName",
-		ResourceGroup:                     "resourcegroup",
+		ResourceGroup:                     "resourceGroup",
 		RouteTableName:                    "routeTableName",
-		RouteTableResourceGroup:           "routeTableResourceGroup",
 		SecurityGroupName:                 "securityGroupName",
 		SubnetName:                        "subnetName",
 		UseInstanceMetadata:               true,
@@ -943,7 +941,6 @@ func getTestCloud() (az *Cloud) {
 			},
 			ResourceGroup:                "rg",
 			VnetResourceGroup:            "rg",
-			RouteTableResourceGroup:      "rg",
 			Location:                     "westus",
 			VnetName:                     "vnet",
 			SubnetName:                   "subnet",
@@ -1140,13 +1137,6 @@ func getInternalTestService(identifier string, requestedPorts ...int32) v1.Servi
 	return svc
 }
 
-func getResourceGroupTestService(identifier, resourceGroup, loadBalancerIP string, requestedPorts ...int32) v1.Service {
-	svc := getTestService(identifier, v1.ProtocolTCP, requestedPorts...)
-	svc.Spec.LoadBalancerIP = loadBalancerIP
-	svc.Annotations[ServiceAnnotationLoadBalancerResourceGroup] = resourceGroup
-	return svc
-}
-
 func setLoadBalancerModeAnnotation(service *v1.Service, lbMode string) {
 	service.Annotations[ServiceAnnotationLoadBalancerMode] = lbMode
 }
@@ -1219,7 +1209,7 @@ func validateLoadBalancer(t *testing.T, loadBalancer *network.LoadBalancer, serv
 		}
 		for _, wantedRule := range svc.Spec.Ports {
 			expectedRuleCount++
-			wantedRuleName := az.getLoadBalancerRuleName(&svc, wantedRule.Protocol, wantedRule.Port, subnet(&svc))
+			wantedRuleName := az.getLoadBalancerRuleName(&svc, wantedRule, subnet(&svc))
 			foundRule := false
 			for _, actualRule := range *loadBalancer.LoadBalancingRules {
 				if strings.EqualFold(*actualRule.Name, wantedRuleName) &&
@@ -1527,7 +1517,6 @@ func TestNewCloudFromJSON(t *testing.T) {
 		"aadClientCertPath": "--aad-client-cert-path--",
 		"aadClientCertPassword": "--aad-client-cert-password--",
 		"resourceGroup": "--resource-group--",
-		"routeTableResourceGroup": "--route-table-resource-group--",
 		"location": "--location--",
 		"subnetName": "--subnet-name--",
 		"securityGroupName": "--security-group-name--",
@@ -1561,8 +1550,7 @@ aadClientSecret: --aad-client-secret--
 	validateEmptyConfig(t, config)
 }
 
-// Test Configuration deserialization (yaml) without
-// specific resource group for the route table
+// Test Configuration deserialization (yaml)
 func TestNewCloudFromYAML(t *testing.T) {
 	config := `
 tenantId: --tenant-id--
@@ -1572,7 +1560,6 @@ aadClientSecret: --aad-client-secret--
 aadClientCertPath: --aad-client-cert-path--
 aadClientCertPassword: --aad-client-cert-password--
 resourceGroup: --resource-group--
-routeTableResourceGroup: --route-table-resource-group--
 location: --location--
 subnetName: --subnet-name--
 securityGroupName: --security-group-name--
@@ -1614,9 +1601,6 @@ func validateConfig(t *testing.T, config string) {
 	}
 	if azureCloud.ResourceGroup != "--resource-group--" {
 		t.Errorf("got incorrect value for ResourceGroup")
-	}
-	if azureCloud.RouteTableResourceGroup != "--route-table-resource-group--" {
-		t.Errorf("got incorrect value for RouteTableResourceGroup")
 	}
 	if azureCloud.Location != "--location--" {
 		t.Errorf("got incorrect value for Location")
@@ -1692,8 +1676,7 @@ func validateEmptyConfig(t *testing.T, config string) {
 func TestGetZone(t *testing.T) {
 	cloud := &Cloud{
 		Config: Config{
-			Location:            "eastus",
-			UseInstanceMetadata: true,
+			Location: "eastus",
 		},
 	}
 	testcases := []struct {

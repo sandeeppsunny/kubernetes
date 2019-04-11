@@ -31,25 +31,6 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	cmoptions "k8s.io/kubernetes/cmd/controller-manager/app/options"
 	kubectrlmgrconfig "k8s.io/kubernetes/pkg/controller/apis/config"
-	csrsigningconfig "k8s.io/kubernetes/pkg/controller/certificates/signer/config"
-	daemonconfig "k8s.io/kubernetes/pkg/controller/daemon/config"
-	deploymentconfig "k8s.io/kubernetes/pkg/controller/deployment/config"
-	endpointconfig "k8s.io/kubernetes/pkg/controller/endpoint/config"
-	garbagecollectorconfig "k8s.io/kubernetes/pkg/controller/garbagecollector/config"
-	jobconfig "k8s.io/kubernetes/pkg/controller/job/config"
-	namespaceconfig "k8s.io/kubernetes/pkg/controller/namespace/config"
-	nodeipamconfig "k8s.io/kubernetes/pkg/controller/nodeipam/config"
-	nodelifecycleconfig "k8s.io/kubernetes/pkg/controller/nodelifecycle/config"
-	poautosclerconfig "k8s.io/kubernetes/pkg/controller/podautoscaler/config"
-	podgcconfig "k8s.io/kubernetes/pkg/controller/podgc/config"
-	replicasetconfig "k8s.io/kubernetes/pkg/controller/replicaset/config"
-	replicationconfig "k8s.io/kubernetes/pkg/controller/replication/config"
-	resourcequotaconfig "k8s.io/kubernetes/pkg/controller/resourcequota/config"
-	serviceconfig "k8s.io/kubernetes/pkg/controller/service/config"
-	serviceaccountconfig "k8s.io/kubernetes/pkg/controller/serviceaccount/config"
-	ttlafterfinishedconfig "k8s.io/kubernetes/pkg/controller/ttlafterfinished/config"
-	attachdetachconfig "k8s.io/kubernetes/pkg/controller/volume/attachdetach/config"
-	persistentvolumeconfig "k8s.io/kubernetes/pkg/controller/volume/persistentvolume/config"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -188,30 +169,30 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		ServiceController: &cmoptions.ServiceControllerOptions{
-			ServiceControllerConfiguration: &serviceconfig.ServiceControllerConfiguration{
+			ServiceControllerConfiguration: &kubectrlmgrconfig.ServiceControllerConfiguration{
 				ConcurrentServiceSyncs: 2,
 			},
 		},
 		AttachDetachController: &AttachDetachControllerOptions{
-			&attachdetachconfig.AttachDetachControllerConfiguration{
+			&kubectrlmgrconfig.AttachDetachControllerConfiguration{
 				ReconcilerSyncLoopPeriod:          metav1.Duration{Duration: 30 * time.Second},
 				DisableAttachDetachReconcilerSync: true,
 			},
 		},
 		CSRSigningController: &CSRSigningControllerOptions{
-			&csrsigningconfig.CSRSigningControllerConfiguration{
+			&kubectrlmgrconfig.CSRSigningControllerConfiguration{
 				ClusterSigningCertFile: "/cluster-signing-cert",
 				ClusterSigningKeyFile:  "/cluster-signing-key",
 				ClusterSigningDuration: metav1.Duration{Duration: 10 * time.Hour},
 			},
 		},
 		DaemonSetController: &DaemonSetControllerOptions{
-			&daemonconfig.DaemonSetControllerConfiguration{
+			&kubectrlmgrconfig.DaemonSetControllerConfiguration{
 				ConcurrentDaemonSetSyncs: 2,
 			},
 		},
 		DeploymentController: &DeploymentControllerOptions{
-			&deploymentconfig.DeploymentControllerConfiguration{
+			&kubectrlmgrconfig.DeploymentControllerConfiguration{
 				ConcurrentDeploymentSyncs:      10,
 				DeploymentControllerSyncPeriod: metav1.Duration{Duration: 45 * time.Second},
 			},
@@ -223,21 +204,21 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		EndpointController: &EndpointControllerOptions{
-			&endpointconfig.EndpointControllerConfiguration{
+			&kubectrlmgrconfig.EndpointControllerConfiguration{
 				ConcurrentEndpointSyncs: 10,
 			},
 		},
 		GarbageCollectorController: &GarbageCollectorControllerOptions{
-			&garbagecollectorconfig.GarbageCollectorControllerConfiguration{
+			&kubectrlmgrconfig.GarbageCollectorControllerConfiguration{
 				ConcurrentGCSyncs: 30,
-				GCIgnoredResources: []garbagecollectorconfig.GroupResource{
+				GCIgnoredResources: []kubectrlmgrconfig.GroupResource{
 					{Group: "", Resource: "events"},
 				},
 				EnableGarbageCollector: false,
 			},
 		},
 		HPAController: &HPAControllerOptions{
-			&poautosclerconfig.HPAControllerConfiguration{
+			&kubectrlmgrconfig.HPAControllerConfiguration{
 				HorizontalPodAutoscalerSyncPeriod:                   metav1.Duration{Duration: 45 * time.Second},
 				HorizontalPodAutoscalerUpscaleForbiddenWindow:       metav1.Duration{Duration: 1 * time.Minute},
 				HorizontalPodAutoscalerDownscaleForbiddenWindow:     metav1.Duration{Duration: 2 * time.Minute},
@@ -249,23 +230,23 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		JobController: &JobControllerOptions{
-			&jobconfig.JobControllerConfiguration{
+			&kubectrlmgrconfig.JobControllerConfiguration{
 				ConcurrentJobSyncs: 5,
 			},
 		},
 		NamespaceController: &NamespaceControllerOptions{
-			&namespaceconfig.NamespaceControllerConfiguration{
+			&kubectrlmgrconfig.NamespaceControllerConfiguration{
 				NamespaceSyncPeriod:      metav1.Duration{Duration: 10 * time.Minute},
 				ConcurrentNamespaceSyncs: 20,
 			},
 		},
 		NodeIPAMController: &NodeIPAMControllerOptions{
-			&nodeipamconfig.NodeIPAMControllerConfiguration{
+			&kubectrlmgrconfig.NodeIPAMControllerConfiguration{
 				NodeCIDRMaskSize: 48,
 			},
 		},
 		NodeLifecycleController: &NodeLifecycleControllerOptions{
-			&nodelifecycleconfig.NodeLifecycleControllerConfiguration{
+			&kubectrlmgrconfig.NodeLifecycleControllerConfiguration{
 				EnableTaintManager:        false,
 				NodeEvictionRate:          0.2,
 				SecondaryNodeEvictionRate: 0.05,
@@ -277,13 +258,13 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		PersistentVolumeBinderController: &PersistentVolumeBinderControllerOptions{
-			&persistentvolumeconfig.PersistentVolumeBinderControllerConfiguration{
+			&kubectrlmgrconfig.PersistentVolumeBinderControllerConfiguration{
 				PVClaimBinderSyncPeriod: metav1.Duration{Duration: 30 * time.Second},
-				VolumeConfiguration: persistentvolumeconfig.VolumeConfiguration{
+				VolumeConfiguration: kubectrlmgrconfig.VolumeConfiguration{
 					EnableDynamicProvisioning:  false,
 					EnableHostPathProvisioning: true,
 					FlexVolumePluginDir:        "/flex-volume-plugin",
-					PersistentVolumeRecyclerConfiguration: persistentvolumeconfig.PersistentVolumeRecyclerConfiguration{
+					PersistentVolumeRecyclerConfiguration: kubectrlmgrconfig.PersistentVolumeRecyclerConfiguration{
 						MaximumRetry:             3,
 						MinimumTimeoutNFS:        200,
 						IncrementTimeoutNFS:      45,
@@ -294,34 +275,34 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		PodGCController: &PodGCControllerOptions{
-			&podgcconfig.PodGCControllerConfiguration{
+			&kubectrlmgrconfig.PodGCControllerConfiguration{
 				TerminatedPodGCThreshold: 12000,
 			},
 		},
 		ReplicaSetController: &ReplicaSetControllerOptions{
-			&replicasetconfig.ReplicaSetControllerConfiguration{
+			&kubectrlmgrconfig.ReplicaSetControllerConfiguration{
 				ConcurrentRSSyncs: 10,
 			},
 		},
 		ReplicationController: &ReplicationControllerOptions{
-			&replicationconfig.ReplicationControllerConfiguration{
+			&kubectrlmgrconfig.ReplicationControllerConfiguration{
 				ConcurrentRCSyncs: 10,
 			},
 		},
 		ResourceQuotaController: &ResourceQuotaControllerOptions{
-			&resourcequotaconfig.ResourceQuotaControllerConfiguration{
+			&kubectrlmgrconfig.ResourceQuotaControllerConfiguration{
 				ResourceQuotaSyncPeriod:      metav1.Duration{Duration: 10 * time.Minute},
 				ConcurrentResourceQuotaSyncs: 10,
 			},
 		},
 		SAController: &SAControllerOptions{
-			&serviceaccountconfig.SAControllerConfiguration{
+			&kubectrlmgrconfig.SAControllerConfiguration{
 				ServiceAccountKeyFile:  "/service-account-private-key",
 				ConcurrentSATokenSyncs: 10,
 			},
 		},
 		TTLAfterFinishedController: &TTLAfterFinishedControllerOptions{
-			&ttlafterfinishedconfig.TTLAfterFinishedControllerConfiguration{
+			&kubectrlmgrconfig.TTLAfterFinishedControllerConfiguration{
 				ConcurrentTTLSyncs: 8,
 			},
 		},
@@ -368,7 +349,7 @@ func TestAddFlags(t *testing.T) {
 	}
 }
 
-type sortedGCIgnoredResources []garbagecollectorconfig.GroupResource
+type sortedGCIgnoredResources []kubectrlmgrconfig.GroupResource
 
 func (r sortedGCIgnoredResources) Len() int {
 	return len(r)

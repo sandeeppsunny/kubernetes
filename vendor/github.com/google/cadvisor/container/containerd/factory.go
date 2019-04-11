@@ -128,7 +128,7 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 		return fmt.Errorf("failed to fetch containerd client version: %v", err)
 	}
 
-	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
+	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems()
 	if err != nil {
 		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}

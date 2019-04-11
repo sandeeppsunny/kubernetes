@@ -40,6 +40,11 @@ var (
 		`)
 )
 
+type addonData interface {
+	Cfg() *kubeadmapi.InitConfiguration
+	Client() (clientset.Interface, error)
+}
+
 // NewAddonPhase returns the addon Cobra command
 func NewAddonPhase() workflow.Phase {
 	return workflow.Phase{
@@ -71,8 +76,8 @@ func NewAddonPhase() workflow.Phase {
 	}
 }
 
-func getInitData(c workflow.RunData) (*kubeadmapi.InitConfiguration, clientset.Interface, error) {
-	data, ok := c.(InitData)
+func getAddonData(c workflow.RunData) (*kubeadmapi.InitConfiguration, clientset.Interface, error) {
+	data, ok := c.(addonData)
 	if !ok {
 		return nil, nil, errors.New("addon phase invoked with an invalid data struct")
 	}
@@ -86,7 +91,7 @@ func getInitData(c workflow.RunData) (*kubeadmapi.InitConfiguration, clientset.I
 
 // runCoreDNSAddon installs CoreDNS addon to a Kubernetes cluster
 func runCoreDNSAddon(c workflow.RunData) error {
-	cfg, client, err := getInitData(c)
+	cfg, client, err := getAddonData(c)
 	if err != nil {
 		return err
 	}
@@ -95,7 +100,7 @@ func runCoreDNSAddon(c workflow.RunData) error {
 
 // runKubeProxyAddon installs KubeProxy addon to a Kubernetes cluster
 func runKubeProxyAddon(c workflow.RunData) error {
-	cfg, client, err := getInitData(c)
+	cfg, client, err := getAddonData(c)
 	if err != nil {
 		return err
 	}

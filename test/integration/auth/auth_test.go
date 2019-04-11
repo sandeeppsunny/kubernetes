@@ -228,7 +228,7 @@ var aBinding string = `
 }
 `
 
-var emptyEndpoints = `
+var emptyEndpoints string = `
 {
   "kind": "Endpoints",
   "apiVersion": "v1",
@@ -493,10 +493,10 @@ func parseResourceVersion(response []byte) (string, float64, error) {
 }
 
 func getPreviousResourceVersionKey(url, id string) string {
-	baseURL := strings.Split(url, "?")[0]
-	key := baseURL
+	baseUrl := strings.Split(url, "?")[0]
+	key := baseUrl
 	if id != "" {
-		key = fmt.Sprintf("%s/%v", baseURL, id)
+		key = fmt.Sprintf("%s/%v", baseUrl, id)
 	}
 	return key
 }
@@ -1075,8 +1075,8 @@ func TestKindAuthorization(t *testing.T) {
 			if r.verb == "PUT" && r.body != "" {
 				// For update operations, insert previous resource version
 				if resVersion := previousResourceVersion[getPreviousResourceVersionKey(r.URL, "")]; resVersion != 0 {
-					resourceVersionJSON := fmt.Sprintf(",\r\n\"resourceVersion\": \"%v\"", resVersion)
-					bodyStr = fmt.Sprintf(r.body, resourceVersionJSON)
+					resourceVersionJson := fmt.Sprintf(",\r\n\"resourceVersion\": \"%v\"", resVersion)
+					bodyStr = fmt.Sprintf(r.body, resourceVersionJson)
 				}
 			}
 		}

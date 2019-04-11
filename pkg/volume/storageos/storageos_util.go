@@ -69,7 +69,7 @@ type apiImplementer interface {
 	VolumeMount(opts storageostypes.VolumeMountOptions) error
 	VolumeUnmount(opts storageostypes.VolumeUnmountOptions) error
 	VolumeDelete(opt storageostypes.DeleteOptions) error
-	Node(ref string) (*storageostypes.Node, error)
+	Controller(ref string) (*storageostypes.Controller, error)
 }
 
 // storageosUtil is the utility structure to interact with the StorageOS API.
@@ -203,25 +203,6 @@ func (u *storageosUtil) DetachVolume(b *storageosUnmounter, devicePath string) e
 	return removeLoopDevice(devicePath, b.exec)
 }
 
-// AttachDevice attaches the volume device to the host at a given mount path.
-func (u *storageosUtil) AttachDevice(b *storageosMounter, deviceMountPath string) error {
-	if err := u.NewAPI(b.apiCfg); err != nil {
-		return err
-	}
-
-	opts := storageostypes.VolumeMountOptions{
-		Name:       b.volName,
-		Namespace:  b.volNamespace,
-		FsType:     b.fsType,
-		Mountpoint: deviceMountPath,
-		Client:     b.plugin.host.GetHostName(),
-	}
-	if err := u.api.VolumeMount(opts); err != nil {
-		return err
-	}
-	return nil
-}
-
 // Mount mounts the volume on the host.
 func (u *storageosUtil) MountVolume(b *storageosMounter, mntDevice, deviceMountPath string) error {
 	notMnt, err := b.mounter.IsLikelyNotMountPoint(deviceMountPath)
@@ -250,7 +231,22 @@ func (u *storageosUtil) MountVolume(b *storageosMounter, mntDevice, deviceMountP
 			return err
 		}
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	if err := u.NewAPI(b.apiCfg); err != nil {
+		return err
+	}
+
+	opts := storageostypes.VolumeMountOptions{
+		Name:       b.volName,
+		Namespace:  b.volNamespace,
+		FsType:     b.fsType,
+		Mountpoint: deviceMountPath,
+		Client:     b.plugin.host.GetHostName(),
+	}
+	return u.api.VolumeMount(opts)
 }
 
 // Unmount removes the mount reference from the volume allowing it to be
@@ -293,7 +289,7 @@ func (u *storageosUtil) DeleteVolume(d *storageosDeleter) error {
 // specified.
 func (u *storageosUtil) DeviceDir(b *storageosMounter) string {
 
-	ctrl, err := u.api.Node(b.plugin.host.GetHostName())
+	ctrl, err := u.api.Controller(b.plugin.host.GetHostName())
 	if err != nil {
 		klog.Warningf("node device path lookup failed: %v", err)
 		return defaultDeviceDir

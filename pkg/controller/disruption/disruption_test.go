@@ -18,6 +18,7 @@ package disruption
 
 import (
 	"fmt"
+	"reflect"
 	"runtime/debug"
 	"testing"
 	"time"
@@ -25,7 +26,6 @@ import (
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	policy "k8s.io/api/policy/v1beta1"
-	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -67,7 +67,7 @@ func (ps *pdbStates) VerifyPdbStatus(t *testing.T, key string, disruptionsAllowe
 		ObservedGeneration:    actualPDB.Generation,
 	}
 	actualStatus := actualPDB.Status
-	if !apiequality.Semantic.DeepEqual(actualStatus, expectedStatus) {
+	if !reflect.DeepEqual(actualStatus, expectedStatus) {
 		debug.PrintStack()
 		t.Fatalf("PDB %q status mismatch.  Expected %+v but got %+v.", key, expectedStatus, actualStatus)
 	}
@@ -735,7 +735,7 @@ func TestPDBNotExist(t *testing.T) {
 
 func TestUpdateDisruptedPods(t *testing.T) {
 	dc, ps := newFakeDisruptionController()
-	dc.recheckQueue = workqueue.NewNamedDelayingQueue("pdb_queue")
+	dc.recheckQueue = workqueue.NewNamedDelayingQueue("pdb-queue")
 	pdb, pdbName := newMinAvailablePodDisruptionBudget(t, intstr.FromInt(1))
 	currentTime := time.Now()
 	pdb.Status.DisruptedPods = map[string]metav1.Time{

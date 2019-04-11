@@ -76,7 +76,7 @@ var _ = utils.SIGDescribe("PersistentVolumes:vsphere", func() {
 
 		if volumePath == "" {
 			volumePath, err = nodeInfo.VSphere.CreateVolume(&VolumeOptions{}, nodeInfo.DataCenterRef)
-			framework.ExpectNoError(err)
+			Expect(err).NotTo(HaveOccurred())
 			pvConfig = framework.PersistentVolumeConfig{
 				NamePrefix: "vspherepv-",
 				Labels:     volLabel,
@@ -96,17 +96,17 @@ var _ = utils.SIGDescribe("PersistentVolumes:vsphere", func() {
 		}
 		By("Creating the PV and PVC")
 		pv, pvc, err = framework.CreatePVPVC(c, pvConfig, pvcConfig, ns, false)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 		framework.ExpectNoError(framework.WaitOnPVandPVC(c, ns, pv, pvc))
 
 		By("Creating the Client Pod")
 		clientPod, err = framework.CreateClientPod(c, ns, pvc)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 		node = clientPod.Spec.NodeName
 
 		By("Verify disk should be attached to the node")
 		isAttached, err := diskIsAttached(volumePath, node)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(isAttached).To(BeTrue(), "disk is not attached with the node")
 	})
 
@@ -207,10 +207,10 @@ var _ = utils.SIGDescribe("PersistentVolumes:vsphere", func() {
 	It("should test that deleting the Namespace of a PVC and Pod causes the successful detach of vsphere volume", func() {
 		By("Deleting the Namespace")
 		err := c.CoreV1().Namespaces().Delete(ns, nil)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 
 		err = framework.WaitForNamespacesDeleted(c, []string{ns}, 3*time.Minute)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Verifying Persistent Disk detaches")
 		waitForVSphereDiskToDetach(volumePath, node)

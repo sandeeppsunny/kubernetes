@@ -173,7 +173,7 @@ func (a *acrProvider) Enabled() bool {
 	return true
 }
 
-func (a *acrProvider) Provide(image string) credentialprovider.DockerConfig {
+func (a *acrProvider) Provide() credentialprovider.DockerConfig {
 	cfg := credentialprovider.DockerConfig{}
 	ctx, cancel := getContextWithCancel()
 	defer cancel()
@@ -205,13 +205,6 @@ func (a *acrProvider) Provide(image string) credentialprovider.DockerConfig {
 			}
 			cfg[url] = *cred
 		}
-	}
-
-	// add ACR anonymous repo support: use empty username and password for anonymous access
-	cfg["*.azurecr.*"] = credentialprovider.DockerConfigEntry{
-		Username: "",
-		Password: "",
-		Email:    dummyRegistryEmail,
 	}
 	return cfg
 }
@@ -246,6 +239,6 @@ func getACRDockerEntryFromARMToken(a *acrProvider, loginServer string) (*credent
 	}, nil
 }
 
-func (a *acrProvider) LazyProvide(image string) *credentialprovider.DockerConfigEntry {
+func (a *acrProvider) LazyProvide() *credentialprovider.DockerConfigEntry {
 	return nil
 }

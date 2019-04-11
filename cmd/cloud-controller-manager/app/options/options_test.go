@@ -30,7 +30,6 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	cmoptions "k8s.io/kubernetes/cmd/controller-manager/app/options"
 	kubectrlmgrconfig "k8s.io/kubernetes/pkg/controller/apis/config"
-	serviceconfig "k8s.io/kubernetes/pkg/controller/service/config"
 )
 
 func TestDefaultFlags(t *testing.T) {
@@ -81,7 +80,7 @@ func TestDefaultFlags(t *testing.T) {
 			},
 		},
 		ServiceController: &cmoptions.ServiceControllerOptions{
-			ServiceControllerConfiguration: &serviceconfig.ServiceControllerConfiguration{
+			ServiceControllerConfiguration: &kubectrlmgrconfig.ServiceControllerConfiguration{
 				ConcurrentServiceSyncs: 1,
 			},
 		},
@@ -210,7 +209,7 @@ func TestAddFlags(t *testing.T) {
 			},
 		},
 		ServiceController: &cmoptions.ServiceControllerOptions{
-			ServiceControllerConfiguration: &serviceconfig.ServiceControllerConfiguration{
+			ServiceControllerConfiguration: &kubectrlmgrconfig.ServiceControllerConfiguration{
 				ConcurrentServiceSyncs: 1,
 			},
 		},

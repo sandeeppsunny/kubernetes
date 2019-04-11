@@ -56,7 +56,6 @@ import (
 )
 
 var globalHousekeepingInterval = flag.Duration("global_housekeeping_interval", 1*time.Minute, "Interval between global housekeepings")
-var updateMachineInfoInterval = flag.Duration("update_machine_info_interval", 5*time.Minute, "Interval between machine info updates.")
 var logCadvisorUsage = flag.Bool("log_cadvisor_usage", false, "Whether to log the usage of the cAdvisor container")
 var eventStorageAgeLimit = flag.String("event_storage_age_limit", "default=24h", "Max length of time for which to store events (per type). Value is a comma separated list of key values, where the keys are event types (e.g.: creation, oom) or \"default\" and the value is a duration. Default is applied to all non-specified event types")
 var eventStorageEventLimit = flag.String("event_storage_event_limit", "default=100000", "Max number of events to store (per type). Value is a comma separated list of key values, where the keys are event types (e.g.: creation, oom) or \"default\" and the value is an integer. Default is applied to all non-specified event types")
@@ -209,7 +208,6 @@ func New(memoryCache *memory.InMemoryCache, sysfs sysfs.SysFs, maxHousekeepingIn
 		quitChannels:                          make([]chan error, 0, 2),
 		memoryCache:                           memoryCache,
 		fsInfo:                                fsInfo,
-		sysFs:                                 sysfs,
 		cadvisorContainer:                     selfContainer,
 		inHostNamespace:                       inHostNamespace,
 		startupTime:                           time.Now(),
@@ -279,8 +277,6 @@ type manager struct {
 	containersLock           sync.RWMutex
 	memoryCache              *memory.InMemoryCache
 	fsInfo                   fs.FsInfo
-	sysFs                    sysfs.SysFs
-	machineMu                sync.RWMutex // protects machineInfo
 	machineInfo              info.MachineInfo
 	quitChannels             []chan error
 	cadvisorContainer        string
@@ -386,10 +382,6 @@ func (self *manager) Start() error {
 	self.quitChannels = append(self.quitChannels, quitGlobalHousekeeping)
 	go self.globalHousekeeping(quitGlobalHousekeeping)
 
-	quitUpdateMachineInfo := make(chan error)
-	self.quitChannels = append(self.quitChannels, quitUpdateMachineInfo)
-	go self.updateMachineInfo(quitUpdateMachineInfo)
-
 	return nil
 }
 
@@ -408,28 +400,6 @@ func (self *manager) Stop() error {
 	}
 	self.quitChannels = make([]chan error, 0, 2)
 	return nil
-}
-
-func (self *manager) updateMachineInfo(quit chan error) {
-	ticker := time.NewTicker(*updateMachineInfoInterval)
-	for {
-		select {
-		case <-ticker.C:
-			info, err := machine.Info(self.sysFs, self.fsInfo, self.inHostNamespace)
-			if err != nil {
-				klog.Errorf("Could not get machine info: %v", err)
-				break
-			}
-			self.machineMu.Lock()
-			self.machineInfo = *info
-			self.machineMu.Unlock()
-			klog.V(5).Infof("Update machine info: %+v", *info)
-		case <-quit:
-			ticker.Stop()
-			quit <- nil
-			return
-		}
-	}
 }
 
 func (self *manager) globalHousekeeping(quit chan error) {
@@ -531,9 +501,7 @@ func (self *manager) getAdjustedSpec(cinfo *containerInfo) info.ContainerSpec {
 	if spec.HasMemory {
 		// Memory.Limit is 0 means there's no limit
 		if spec.Memory.Limit == 0 {
-			self.machineMu.RLock()
 			spec.Memory.Limit = uint64(self.machineInfo.MemoryCapacity)
-			self.machineMu.RUnlock()
 		}
 	}
 	return spec
@@ -866,8 +834,6 @@ func (self *manager) GetFsInfo(label string) ([]v2.FsInfo, error) {
 }
 
 func (m *manager) GetMachineInfo() (*info.MachineInfo, error) {
-	m.machineMu.RLock()
-	defer m.machineMu.RUnlock()
 	// Copy and return the MachineInfo.
 	return &m.machineInfo, nil
 }

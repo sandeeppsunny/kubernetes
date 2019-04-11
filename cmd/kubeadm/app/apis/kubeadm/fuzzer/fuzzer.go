@@ -31,6 +31,7 @@ func Funcs(codecs runtimeserializer.CodecFactory) []interface{} {
 		fuzzInitConfiguration,
 		fuzzClusterConfiguration,
 		fuzzComponentConfigs,
+		fuzzNodeRegistration,
 		fuzzDNS,
 		fuzzLocalEtcd,
 		fuzzNetworking,
@@ -83,6 +84,13 @@ func fuzzInitConfiguration(obj *kubeadm.InitConfiguration, c fuzz.Continue) {
 	}
 }
 
+func fuzzNodeRegistration(obj *kubeadm.NodeRegistrationOptions, c fuzz.Continue) {
+	c.FuzzNoCustom(obj)
+
+	// Pinning values for fields that get defaults if fuzz value is empty string or nil (thus making the round trip test fail)
+	obj.CRISocket = "foo"
+}
+
 func fuzzClusterConfiguration(obj *kubeadm.ClusterConfiguration, c fuzz.Continue) {
 	c.FuzzNoCustom(obj)
 
@@ -98,7 +106,8 @@ func fuzzClusterConfiguration(obj *kubeadm.ClusterConfiguration, c fuzz.Continue
 }
 
 func fuzzDNS(obj *kubeadm.DNS, c fuzz.Continue) {
-	c.FuzzNoCustom(obj)
+	// This is intentionally not calling c.FuzzNoCustom because DNS struct does not exists in v1alpha3 api
+	// (so no random value will be applied, and this is necessary for getting roundtrip passing)
 
 	// Pinning values for fields that get defaults if fuzz value is empty string or nil
 	obj.Type = kubeadm.CoreDNS
@@ -114,6 +123,10 @@ func fuzzLocalEtcd(obj *kubeadm.LocalEtcd, c fuzz.Continue) {
 
 	// Pinning values for fields that get defaults if fuzz value is empty string or nil (thus making the round trip test fail)
 	obj.DataDir = "foo"
+
+	// Pinning values for fields that does not exists in v1alpha3 api
+	obj.ImageRepository = ""
+	obj.ImageTag = ""
 }
 
 func fuzzNetworking(obj *kubeadm.Networking, c fuzz.Continue) {

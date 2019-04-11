@@ -28,9 +28,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/probe"
 )
 
@@ -67,7 +64,7 @@ func TestHTTPProbeProxy(t *testing.T) {
 	defer unsetEnv("no_proxy")()
 	defer unsetEnv("NO_PROXY")()
 
-	prober := New(true)
+	prober := New()
 
 	go func() {
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +119,7 @@ func TestHTTPProbeChecker(t *testing.T) {
 		}
 	}
 
-	prober := New(true)
+	prober := New()
 	testCases := []struct {
 		handler    func(w http.ResponseWriter, r *http.Request)
 		reqHeaders http.Header
@@ -226,7 +223,7 @@ func TestHTTPProbeChecker(t *testing.T) {
 		},
 	}
 	for i, test := range testCases {
-		t.Run(fmt.Sprintf("case-%2d", i), func(t *testing.T) {
+		func() {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				test.handler(w, r)
 			}))
@@ -261,56 +258,6 @@ func TestHTTPProbeChecker(t *testing.T) {
 					t.Errorf("Expected response not to contain %v, got %v", test.notBody, output)
 				}
 			}
-		})
-	}
-}
-
-func TestHTTPProbeChecker_NonLocalRedirects(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/redirect":
-			loc, _ := url.QueryUnescape(r.URL.Query().Get("loc"))
-			http.Redirect(w, r, loc, http.StatusFound)
-		case "/loop":
-			http.Redirect(w, r, "/loop", http.StatusFound)
-		case "/success":
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.Error(w, "", http.StatusInternalServerError)
-		}
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	newportServer := httptest.NewServer(handler)
-	defer newportServer.Close()
-
-	testCases := map[string]struct {
-		redirect             string
-		expectLocalResult    probe.Result
-		expectNonLocalResult probe.Result
-	}{
-		"local success":   {"/success", probe.Success, probe.Success},
-		"local fail":      {"/fail", probe.Failure, probe.Failure},
-		"newport success": {newportServer.URL + "/success", probe.Success, probe.Success},
-		"newport fail":    {newportServer.URL + "/fail", probe.Failure, probe.Failure},
-		"bogus nonlocal":  {"http://0.0.0.0/fail", probe.Warning, probe.Failure},
-		"redirect loop":   {"/loop", probe.Failure, probe.Failure},
-	}
-	for desc, test := range testCases {
-		t.Run(desc+"-local", func(t *testing.T) {
-			prober := New(false)
-			target, err := url.Parse(server.URL + "/redirect?loc=" + url.QueryEscape(test.redirect))
-			require.NoError(t, err)
-			result, _, _ := prober.Probe(target, nil, wait.ForeverTestTimeout)
-			assert.Equal(t, test.expectLocalResult, result)
-		})
-		t.Run(desc+"-nonlocal", func(t *testing.T) {
-			prober := New(true)
-			target, err := url.Parse(server.URL + "/redirect?loc=" + url.QueryEscape(test.redirect))
-			require.NoError(t, err)
-			result, _, _ := prober.Probe(target, nil, wait.ForeverTestTimeout)
-			assert.Equal(t, test.expectNonLocalResult, result)
-		})
+		}()
 	}
 }

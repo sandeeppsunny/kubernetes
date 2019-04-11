@@ -21,7 +21,7 @@ import (
 	"time"
 
 	apps "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,9 +94,9 @@ var _ = SIGDescribe("ReplicaSet", func() {
 	It("should serve a basic image on each replica with a private image", func() {
 		// requires private images
 		framework.SkipUnlessProviderIs("gce", "gke")
-		privateimage := imageutils.GetConfig(imageutils.ServeHostname)
+		privateimage := imageutils.ServeHostname
 		privateimage.SetRegistry(imageutils.PrivateRegistry)
-		testReplicaSetServeImageOrFail(f, "private", privateimage.GetE2EImage())
+		testReplicaSetServeImageOrFail(f, "private", imageutils.GetE2EImage(privateimage))
 	})
 
 	It("should surface a failure condition on a common issue like exceeded quota", func() {

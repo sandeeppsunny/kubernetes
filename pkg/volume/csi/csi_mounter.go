@@ -18,7 +18,7 @@ package csi
 
 import (
 	"context"
-	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -42,24 +42,22 @@ var (
 		volHandle,
 		driverName,
 		nodeName,
-		attachmentID,
-		driverMode string
+		attachmentID string
 	}{
 		"specVolID",
 		"volumeHandle",
 		"driverName",
 		"nodeName",
 		"attachmentID",
-		"driverMode",
 	}
+	currentPodInfoMountVersion = "v1"
 )
 
 type csiMountMgr struct {
-	csiClientGetter
+	csiClient      csiClient
 	k8s            kubernetes.Interface
 	plugin         *csiPlugin
 	driverName     csiDriverName
-	driverMode     driverMode
 	volumeID       string
 	specVolumeID   string
 	readOnly       bool
@@ -110,101 +108,49 @@ func (c *csiMountMgr) SetUpAt(dir string, fsGroup *int64) error {
 		return nil
 	}
 
-	csi, err := c.csiClientGetter.Get()
-	if err != nil {
-		klog.Error(log("mounter.SetUpAt failed to get CSI client: %v", err))
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), csiTimeout)
-	defer cancel()
-
-	volSrc, pvSrc, err := getSourceFromSpec(c.spec)
+	csiSource, err := getCSISourceFromSpec(c.spec)
 	if err != nil {
 		klog.Error(log("mounter.SetupAt failed to get CSI persistent source: %v", err))
 		return err
 	}
 
-	driverName := c.driverName
-	volumeHandle := c.volumeID
-	readOnly := c.readOnly
-	accessMode := api.ReadWriteOnce
+	csi := c.csiClient
+	ctx, cancel := context.WithTimeout(context.Background(), csiTimeout)
+	defer cancel()
 
-	var (
-		fsType             string
-		volAttribs         map[string]string
-		nodePublishSecrets map[string]string
-		publishContext     map[string]string
-		mountOptions       []string
-		deviceMountPath    string
-		secretRef          *api.SecretReference
-	)
+	// Check for STAGE_UNSTAGE_VOLUME set and populate deviceMountPath if so
+	deviceMountPath := ""
+	stageUnstageSet, err := csi.NodeSupportsStageUnstage(ctx)
+	if err != nil {
+		klog.Error(log("mounter.SetUpAt failed to check for STAGE_UNSTAGE_VOLUME capabilty: %v", err))
+		return err
+	}
 
-	switch {
-	case volSrc != nil:
-		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIInlineVolume) {
-			return fmt.Errorf("CSIInlineVolume feature required")
-		}
-		if c.driverMode != ephemeralDriverMode {
-			return fmt.Errorf("unexpected driver mode: %s", c.driverMode)
-		}
-		if volSrc.FSType != nil {
-			fsType = *volSrc.FSType
-		}
-
-		volAttribs = volSrc.VolumeAttributes
-
-		if volSrc.NodePublishSecretRef != nil {
-			secretName := volSrc.NodePublishSecretRef.Name
-			ns := c.pod.Namespace
-			secretRef = &api.SecretReference{Name: secretName, Namespace: ns}
-		}
-	case pvSrc != nil:
-		if c.driverMode != persistentDriverMode {
-			return fmt.Errorf("unexpected driver mode: %s", c.driverMode)
-		}
-
-		fsType = pvSrc.FSType
-
-		volAttribs = pvSrc.VolumeAttributes
-
-		if pvSrc.NodePublishSecretRef != nil {
-			secretRef = pvSrc.NodePublishSecretRef
-		}
-
-		//TODO (vladimirvivien) implement better AccessModes mapping between k8s and CSI
-		if c.spec.PersistentVolume.Spec.AccessModes != nil {
-			accessMode = c.spec.PersistentVolume.Spec.AccessModes[0]
-		}
-
-		mountOptions = c.spec.PersistentVolume.Spec.MountOptions
-
-		// Check for STAGE_UNSTAGE_VOLUME set and populate deviceMountPath if so
-		stageUnstageSet, err := csi.NodeSupportsStageUnstage(ctx)
+	if stageUnstageSet {
+		deviceMountPath, err = makeDeviceMountPath(c.plugin, c.spec)
 		if err != nil {
-			klog.Error(log("mounter.SetUpAt failed to check for STAGE_UNSTAGE_VOLUME capabilty: %v", err))
+			klog.Error(log("mounter.SetUpAt failed to make device mount path: %v", err))
 			return err
 		}
-
-		if stageUnstageSet {
-			deviceMountPath, err = makeDeviceMountPath(c.plugin, c.spec)
-			if err != nil {
-				klog.Error(log("mounter.SetUpAt failed to make device mount path: %v", err))
-				return err
-			}
+	}
+	// search for attachment by VolumeAttachment.Spec.Source.PersistentVolumeName
+	if c.publishContext == nil {
+		nodeName := string(c.plugin.host.GetNodeName())
+		c.publishContext, err = c.plugin.getPublishContext(c.k8s, c.volumeID, string(c.driverName), nodeName)
+		if err != nil {
+			return err
 		}
+	}
 
-		// search for attachment by VolumeAttachment.Spec.Source.PersistentVolumeName
-		if c.publishContext == nil {
-			nodeName := string(c.plugin.host.GetNodeName())
-			c.publishContext, err = c.plugin.getPublishContext(c.k8s, volumeHandle, string(driverName), nodeName)
-			if err != nil {
-				return err
-			}
-			publishContext = c.publishContext
+	attribs := csiSource.VolumeAttributes
+
+	nodePublishSecrets := map[string]string{}
+	if csiSource.NodePublishSecretRef != nil {
+		nodePublishSecrets, err = getCredentialsFromSecret(c.k8s, csiSource.NodePublishSecretRef)
+		if err != nil {
+			return fmt.Errorf("fetching NodePublishSecretRef %s/%s failed: %v",
+				csiSource.NodePublishSecretRef.Namespace, csiSource.NodePublishSecretRef.Name, err)
 		}
-
-	default:
-		return fmt.Errorf("volume source not found in volume.Spec")
 	}
 
 	// create target_dir before call to NodePublish
@@ -214,14 +160,10 @@ func (c *csiMountMgr) SetUpAt(dir string, fsGroup *int64) error {
 	}
 	klog.V(4).Info(log("created target path successfully [%s]", dir))
 
-	nodePublishSecrets = map[string]string{}
-	if secretRef != nil {
-		nodePublishSecrets, err = getCredentialsFromSecret(c.k8s, secretRef)
-		if err != nil {
-			return fmt.Errorf("fetching NodePublishSecretRef %s/%s failed: %v",
-				secretRef.Namespace, secretRef.Name, err)
-		}
-
+	//TODO (vladimirvivien) implement better AccessModes mapping between k8s and CSI
+	accessMode := api.ReadWriteOnce
+	if c.spec.PersistentVolume.Spec.AccessModes != nil {
+		accessMode = c.spec.PersistentVolume.Spec.AccessModes[0]
 	}
 
 	// Inject pod information into volume_attributes
@@ -231,27 +173,28 @@ func (c *csiMountMgr) SetUpAt(dir string, fsGroup *int64) error {
 		return err
 	}
 	if podAttrs != nil {
-		if volAttribs == nil {
-			volAttribs = podAttrs
+		if attribs == nil {
+			attribs = podAttrs
 		} else {
 			for k, v := range podAttrs {
-				volAttribs[k] = v
+				attribs[k] = v
 			}
 		}
 	}
 
+	fsType := csiSource.FSType
 	err = csi.NodePublishVolume(
 		ctx,
-		volumeHandle,
-		readOnly,
+		c.volumeID,
+		c.readOnly,
 		deviceMountPath,
 		dir,
 		accessMode,
-		publishContext,
-		volAttribs,
+		c.publishContext,
+		attribs,
 		nodePublishSecrets,
 		fsType,
-		mountOptions,
+		c.spec.PersistentVolume.Spec.MountOptions,
 	)
 
 	if err != nil {
@@ -291,14 +234,8 @@ func (c *csiMountMgr) podAttributes() (map[string]string, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(features.CSIDriverRegistry) {
 		return nil, nil
 	}
-
-	kletHost, ok := c.plugin.host.(volume.KubeletVolumeHost)
-	if ok {
-		kletHost.WaitForCacheSync()
-	}
-
 	if c.plugin.csiDriverLister == nil {
-		return nil, fmt.Errorf("CSIDriverLister not found")
+		return nil, errors.New("CSIDriver lister does not exist")
 	}
 
 	csiDriver, err := c.plugin.csiDriverLister.Get(string(c.driverName))
@@ -310,8 +247,8 @@ func (c *csiMountMgr) podAttributes() (map[string]string, error) {
 		return nil, err
 	}
 
-	// if PodInfoOnMount is not set or false we do not set pod attributes
-	if csiDriver.Spec.PodInfoOnMount == nil || *csiDriver.Spec.PodInfoOnMount == false {
+	// if PodInfoOnMountVersion is not set or not v1 we do not set pod attributes
+	if csiDriver.Spec.PodInfoOnMountVersion == nil || *csiDriver.Spec.PodInfoOnMountVersion != currentPodInfoMountVersion {
 		klog.V(4).Infof(log("CSIDriver %q does not require pod information", c.driverName))
 		return nil, nil
 	}
@@ -352,11 +289,7 @@ func (c *csiMountMgr) TearDownAt(dir string) error {
 	klog.V(4).Infof(log("Unmounter.TearDown(%s)", dir))
 
 	volID := c.volumeID
-	csi, err := c.csiClientGetter.Get()
-	if err != nil {
-		klog.Error(log("mounter.SetUpAt failed to get CSI client: %v", err))
-		return err
-	}
+	csi := c.csiClient
 
 	ctx, cancel := context.WithTimeout(context.Background(), csiTimeout)
 	defer cancel()
@@ -454,10 +387,4 @@ func removeMountDir(plug *csiPlugin, mountPath string) error {
 		}
 	}
 	return nil
-}
-
-// makeVolumeHandle returns csi-<sha256(podUID,volSourceSpecName)>
-func makeVolumeHandle(podUID, volSourceSpecName string) string {
-	result := sha256.Sum256([]byte(fmt.Sprintf("%s%s", podUID, volSourceSpecName)))
-	return fmt.Sprintf("csi-%x", result)
 }

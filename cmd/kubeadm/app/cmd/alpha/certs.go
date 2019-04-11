@@ -24,6 +24,7 @@ import (
 	kubeadmapiv1beta1 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta1"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	cmdutil "k8s.io/kubernetes/cmd/kubeadm/app/cmd/util"
+	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	certsphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/certs"
 	"k8s.io/kubernetes/cmd/kubeadm/app/phases/certs/renewal"
 	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
@@ -80,7 +81,9 @@ type renewConfig struct {
 }
 
 func getRenewSubCommands() []*cobra.Command {
-	cfg := &renewConfig{}
+	cfg := &renewConfig{
+		kubeconfigPath: constants.GetAdminKubeConfigPath(),
+	}
 	// Default values for the cobra help text
 	kubeadmscheme.Scheme.Default(&cfg.cfg)
 
@@ -165,7 +168,7 @@ func generateRenewalCommand(cert *certsphase.KubeadmCert, cfg *renewConfig) *cob
 
 func getRenewer(cfg *renewConfig, caCertBaseName string) (renewal.Interface, error) {
 	if cfg.useAPI {
-		kubeConfigPath := cmdutil.GetKubeConfigPath(cfg.kubeconfigPath)
+		kubeConfigPath := cmdutil.FindExistingKubeConfig(cfg.kubeconfigPath)
 		client, err := kubeconfigutil.ClientSetFromFile(kubeConfigPath)
 		if err != nil {
 			return nil, err

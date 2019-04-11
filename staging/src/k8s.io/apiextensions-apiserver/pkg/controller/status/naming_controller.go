@@ -261,10 +261,6 @@ func (c *NamingConditionController) sync(key string) error {
 	apiextensions.SetCRDCondition(crd, establishedCondition)
 
 	updatedObj, err := c.crdClient.CustomResourceDefinitions().UpdateStatus(crd)
-	if apierrors.IsNotFound(err) || apierrors.IsConflict(err) {
-		// deleted or changed in the meantime, we'll get called again
-		return nil
-	}
 	if err != nil {
 		return err
 	}

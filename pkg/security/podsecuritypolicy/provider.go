@@ -59,10 +59,10 @@ func NewSimpleProvider(psp *policy.PodSecurityPolicy, namespace string, strategy
 	}, nil
 }
 
-// MutatePod sets the default values of the required but not filled fields.
-// Validation should be used after the context is defaulted to ensure it
-// complies with the required restrictions.
-func (s *simpleProvider) MutatePod(pod *api.Pod) error {
+// DefaultPodSecurityContext sets the default values of the required but not filled fields.
+// It modifies the SecurityContext and annotations of the provided pod. Validation should be
+// used after the context is defaulted to ensure it complies with the required restrictions.
+func (s *simpleProvider) DefaultPodSecurityContext(pod *api.Pod) error {
 	sc := securitycontext.NewPodSecurityContextMutator(pod.Spec.SecurityContext)
 
 	if sc.SupplementalGroups() == nil {
@@ -104,25 +104,13 @@ func (s *simpleProvider) MutatePod(pod *api.Pod) error {
 
 	pod.Spec.SecurityContext = sc.PodSecurityContext()
 
-	for i := range pod.Spec.InitContainers {
-		if err := s.mutateContainer(pod, &pod.Spec.InitContainers[i]); err != nil {
-			return err
-		}
-	}
-
-	for i := range pod.Spec.Containers {
-		if err := s.mutateContainer(pod, &pod.Spec.Containers[i]); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-// mutateContainer sets the default values of the required but not filled fields.
+// DefaultContainerSecurityContext sets the default values of the required but not filled fields.
 // It modifies the SecurityContext of the container and annotations of the pod. Validation should
 // be used after the context is defaulted to ensure it complies with the required restrictions.
-func (s *simpleProvider) mutateContainer(pod *api.Pod, container *api.Container) error {
+func (s *simpleProvider) DefaultContainerSecurityContext(pod *api.Pod, container *api.Container) error {
 	sc := securitycontext.NewEffectiveContainerSecurityContextMutator(
 		securitycontext.NewPodSecurityContextAccessor(pod.Spec.SecurityContext),
 		securitycontext.NewContainerSecurityContextMutator(container.SecurityContext),
@@ -294,22 +282,11 @@ func (s *simpleProvider) ValidatePod(pod *api.Pod) field.ErrorList {
 			}
 		}
 	}
-
-	fldPath := field.NewPath("spec", "initContainers")
-	for i := range pod.Spec.InitContainers {
-		allErrs = append(allErrs, s.validateContainer(pod, &pod.Spec.InitContainers[i], fldPath.Index(i))...)
-	}
-
-	fldPath = field.NewPath("spec", "containers")
-	for i := range pod.Spec.Containers {
-		allErrs = append(allErrs, s.validateContainer(pod, &pod.Spec.Containers[i], fldPath.Index(i))...)
-	}
-
 	return allErrs
 }
 
 // Ensure a container's SecurityContext is in compliance with the given constraints
-func (s *simpleProvider) validateContainer(pod *api.Pod, container *api.Container, containerPath *field.Path) field.ErrorList {
+func (s *simpleProvider) ValidateContainer(pod *api.Pod, container *api.Container, containerPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	podSC := securitycontext.NewPodSecurityContextAccessor(pod.Spec.SecurityContext)

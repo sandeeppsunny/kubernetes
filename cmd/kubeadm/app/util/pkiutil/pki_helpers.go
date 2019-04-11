@@ -37,7 +37,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/validation"
 	certutil "k8s.io/client-go/util/cert"
-	"k8s.io/client-go/util/keyutil"
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
@@ -142,11 +141,7 @@ func WriteKey(pkiPath, name string, key *rsa.PrivateKey) error {
 	}
 
 	privateKeyPath := pathForKey(pkiPath, name)
-	encoded, err := keyutil.MarshalPrivateKeyToPEM(key)
-	if err != nil {
-		return errors.Wrapf(err, "unable to marshal private key to PEM")
-	}
-	if err := keyutil.WriteKey(privateKeyPath, encoded); err != nil {
+	if err := certutil.WriteKey(privateKeyPath, certutil.EncodePrivateKeyPEM(key)); err != nil {
 		return errors.Wrapf(err, "unable to write private key to file %s", privateKeyPath)
 	}
 
@@ -185,7 +180,7 @@ func WritePublicKey(pkiPath, name string, key *rsa.PublicKey) error {
 		return err
 	}
 	publicKeyPath := pathForPublicKey(pkiPath, name)
-	if err := keyutil.WriteKey(publicKeyPath, publicKeyBytes); err != nil {
+	if err := certutil.WriteKey(publicKeyPath, publicKeyBytes); err != nil {
 		return errors.Wrapf(err, "unable to write public key to file %s", publicKeyPath)
 	}
 
@@ -263,7 +258,7 @@ func TryLoadKeyFromDisk(pkiPath, name string) (*rsa.PrivateKey, error) {
 	privateKeyPath := pathForKey(pkiPath, name)
 
 	// Parse the private key from a file
-	privKey, err := keyutil.PrivateKeyFromFile(privateKeyPath)
+	privKey, err := certutil.PrivateKeyFromFile(privateKeyPath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "couldn't load the private key file %s", privateKeyPath)
 	}
@@ -302,7 +297,7 @@ func TryLoadPrivatePublicKeyFromDisk(pkiPath, name string) (*rsa.PrivateKey, *rs
 	privateKeyPath := pathForKey(pkiPath, name)
 
 	// Parse the private key from a file
-	privKey, err := keyutil.PrivateKeyFromFile(privateKeyPath)
+	privKey, err := certutil.PrivateKeyFromFile(privateKeyPath)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "couldn't load the private key file %s", privateKeyPath)
 	}
@@ -310,7 +305,7 @@ func TryLoadPrivatePublicKeyFromDisk(pkiPath, name string) (*rsa.PrivateKey, *rs
 	publicKeyPath := pathForPublicKey(pkiPath, name)
 
 	// Parse the public key from a file
-	pubKeys, err := keyutil.PublicKeysFromFile(publicKeyPath)
+	pubKeys, err := certutil.PublicKeysFromFile(publicKeyPath)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "couldn't load the public key file %s", publicKeyPath)
 	}
@@ -404,18 +399,29 @@ func GetAPIServerAltNames(cfg *kubeadmapi.InitConfiguration) (*certutil.AltNames
 // `advertise address` and localhost are included in the SAN since this is the interfaces the etcd static pod listens on.
 // The user can override the listen address with `Etcd.ExtraArgs` and add SANs with `Etcd.ServerCertSANs`.
 func GetEtcdAltNames(cfg *kubeadmapi.InitConfiguration) (*certutil.AltNames, error) {
-	return getAltNames(cfg, kubeadmconstants.EtcdServerCertName)
+	// advertise address
+	advertiseAddress := net.ParseIP(cfg.LocalAPIEndpoint.AdvertiseAddress)
+	if advertiseAddress == nil {
+		return nil, errors.Errorf("error parsing LocalAPIEndpoint AdvertiseAddress %q: is not a valid textual representation of an IP address", cfg.LocalAPIEndpoint.AdvertiseAddress)
+	}
+
+	// create AltNames with defaults DNSNames/IPs
+	altNames := &certutil.AltNames{
+		DNSNames: []string{cfg.NodeRegistration.Name, "localhost"},
+		IPs:      []net.IP{advertiseAddress, net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+	}
+
+	if cfg.Etcd.Local != nil {
+		appendSANsToAltNames(altNames, cfg.Etcd.Local.ServerCertSANs, kubeadmconstants.EtcdServerCertName)
+	}
+
+	return altNames, nil
 }
 
 // GetEtcdPeerAltNames builds an AltNames object for generating the etcd peer certificate.
 // Hostname and `API.AdvertiseAddress` are included if the user chooses to promote the single node etcd cluster into a multi-node one (stacked etcd).
 // The user can override the listen address with `Etcd.ExtraArgs` and add SANs with `Etcd.PeerCertSANs`.
 func GetEtcdPeerAltNames(cfg *kubeadmapi.InitConfiguration) (*certutil.AltNames, error) {
-	return getAltNames(cfg, kubeadmconstants.EtcdPeerCertName)
-}
-
-// getAltNames builds an AltNames object with the cfg and certName.
-func getAltNames(cfg *kubeadmapi.InitConfiguration, certName string) (*certutil.AltNames, error) {
 	// advertise address
 	advertiseAddress := net.ParseIP(cfg.LocalAPIEndpoint.AdvertiseAddress)
 	if advertiseAddress == nil {
@@ -430,12 +436,9 @@ func getAltNames(cfg *kubeadmapi.InitConfiguration, certName string) (*certutil.
 	}
 
 	if cfg.Etcd.Local != nil {
-		if certName == kubeadmconstants.EtcdServerCertName {
-			appendSANsToAltNames(altNames, cfg.Etcd.Local.ServerCertSANs, kubeadmconstants.EtcdServerCertName)
-		} else if certName == kubeadmconstants.EtcdPeerCertName {
-			appendSANsToAltNames(altNames, cfg.Etcd.Local.PeerCertSANs, kubeadmconstants.EtcdPeerCertName)
-		}
+		appendSANsToAltNames(altNames, cfg.Etcd.Local.PeerCertSANs, kubeadmconstants.EtcdPeerCertName)
 	}
+
 	return altNames, nil
 }
 

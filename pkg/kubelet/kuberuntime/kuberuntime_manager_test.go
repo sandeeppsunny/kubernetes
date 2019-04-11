@@ -17,7 +17,6 @@ limitations under the License.
 package kuberuntime
 
 import (
-	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -32,9 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/flowcontrol"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
-	apitest "k8s.io/cri-api/pkg/apis/testing"
 	"k8s.io/kubernetes/pkg/credentialprovider"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
+	apitest "k8s.io/kubernetes/pkg/kubelet/apis/cri/testing"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	containertest "k8s.io/kubernetes/pkg/kubelet/container/testing"
 )
@@ -159,7 +158,6 @@ func makeFakeContainer(t *testing.T, m *kubeGenericRuntimeManager, template cont
 			State:       template.state,
 			Labels:      containerConfig.Labels,
 			Annotations: containerConfig.Annotations,
-			LogPath:     filepath.Join(sandboxConfig.GetLogDirectory(), containerConfig.GetLogPath()),
 		},
 		SandboxID: podSandboxID,
 	}
@@ -386,7 +384,7 @@ func TestGetPods(t *testing.T) {
 	assert.NoError(t, err)
 
 	if !verifyPods(expected, actual) {
-		t.Errorf("expected %#v, got %#v", expected, actual)
+		t.Errorf("expected %q, got %q", expected, actual)
 	}
 }
 

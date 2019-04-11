@@ -28,6 +28,7 @@ func TestValidateCgroupSubsystem(t *testing.T) {
 	}
 	cgroupSpec := []string{"system1", "system2"}
 	for desc, test := range map[string]struct {
+		cgroupSpec []string
 		subsystems []string
 		err        bool
 	}{

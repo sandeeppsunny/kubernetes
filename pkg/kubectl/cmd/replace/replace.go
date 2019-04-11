@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/delete"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -117,6 +117,7 @@ func NewCmdReplace(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobr
 	o.DeleteFlags.AddFlags(cmd)
 	o.RecordFlags.AddFlags(cmd)
 
+	cmd.MarkFlagRequired("filename")
 	cmdutil.AddValidateFlags(cmd)
 	cmdutil.AddApplyAnnotationFlags(cmd)
 
@@ -162,11 +163,6 @@ func (o *ReplaceOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args []
 	}
 	o.DeleteOptions = deleteOpts
 
-	err = o.DeleteOptions.FilenameOptions.RequireFilenameOrKustomize()
-	if err != nil {
-		return err
-	}
-
 	schema, err := f.Validator(o.validate)
 	if err != nil {
 		return err
@@ -193,7 +189,7 @@ func (o *ReplaceOptions) Validate(cmd *cobra.Command) error {
 		return fmt.Errorf("--timeout must have --force specified")
 	}
 
-	if cmdutil.IsFilenameSliceEmpty(o.DeleteOptions.FilenameOptions.Filenames, o.DeleteOptions.FilenameOptions.Kustomize) {
+	if cmdutil.IsFilenameSliceEmpty(o.DeleteOptions.FilenameOptions.Filenames) {
 		return cmdutil.UsageErrorf(cmd, "Must specify --filename to replace")
 	}
 

@@ -206,6 +206,7 @@ users:
 				HardPodAffinitySymmetricWeight: 1,
 				HealthzBindAddress:             "0.0.0.0:10251",
 				MetricsBindAddress:             "0.0.0.0:10251",
+				FailureDomains:                 "kubernetes.io/hostname,failure-domain.beta.kubernetes.io/zone,failure-domain.beta.kubernetes.io/region",
 				LeaderElection: kubeschedulerconfig.KubeSchedulerLeaderElectionConfiguration{
 					LeaderElectionConfiguration: componentbaseconfig.LeaderElectionConfiguration{
 						LeaderElect:   true,
@@ -285,6 +286,7 @@ users:
 				HardPodAffinitySymmetricWeight: 1,
 				HealthzBindAddress:             "", // defaults empty when not running from config file
 				MetricsBindAddress:             "", // defaults empty when not running from config file
+				FailureDomains:                 "kubernetes.io/hostname,failure-domain.beta.kubernetes.io/zone,failure-domain.beta.kubernetes.io/region",
 				LeaderElection: kubeschedulerconfig.KubeSchedulerLeaderElectionConfiguration{
 					LeaderElectionConfiguration: componentbaseconfig.LeaderElectionConfiguration{
 						LeaderElect:   true,

@@ -129,8 +129,6 @@ func GetVolumeFSType(v api.Volume) (policy.FSType, error) {
 		return policy.PortworxVolume, nil
 	case v.ScaleIO != nil:
 		return policy.ScaleIO, nil
-	case v.CSI != nil:
-		return policy.CSI, nil
 	}
 
 	return "", fmt.Errorf("unknown volume type for volume: %#v", v)

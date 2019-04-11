@@ -31,9 +31,9 @@ import (
 	"k8s.io/apiserver/pkg/util/webhook"
 	cacheddiscovery "k8s.io/client-go/discovery/cached/memory"
 	externalinformers "k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	quotainstall "k8s.io/kubernetes/pkg/quota/v1/install"
 )
 
@@ -57,12 +57,12 @@ func (c *Config) New(proxyTransport *http.Transport, serviceResolver webhook.Ser
 			klog.Fatalf("Error reading from cloud configuration file %s: %#v", c.CloudConfigFile, err)
 		}
 	}
-	clientset, err := kubernetes.NewForConfig(c.LoopbackClientConfig)
+	internalClient, err := internalclientset.NewForConfig(c.LoopbackClientConfig)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	discoveryClient := cacheddiscovery.NewMemCacheClient(clientset.Discovery())
+	discoveryClient := cacheddiscovery.NewMemCacheClient(internalClient.Discovery())
 	discoveryRESTMapper := restmapper.NewDeferredDiscoveryRESTMapper(discoveryClient)
 	kubePluginInitializer := NewPluginInitializer(
 		cloudConfig,

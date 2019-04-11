@@ -166,7 +166,6 @@ type daemonSetStatusStrategy struct {
 	daemonSetStrategy
 }
 
-// StatusStrategy is the default logic invoked when updating object status.
 var StatusStrategy = daemonSetStatusStrategy{Strategy}
 
 func (daemonSetStatusStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {

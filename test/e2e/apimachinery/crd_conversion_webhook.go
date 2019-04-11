@@ -32,9 +32,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/utils/crd"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-	"k8s.io/utils/pointer"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -45,7 +43,6 @@ const (
 	secretCRDName      = "sample-custom-resource-conversion-webhook-secret"
 	deploymentCRDName  = "sample-crd-conversion-webhook-deployment"
 	serviceCRDName     = "e2e-test-crd-conversion-webhook"
-	serviceCRDPort     = 9443
 	roleBindingCRDName = "crd-conversion-webhook-auth-reader"
 )
 
@@ -103,14 +100,13 @@ var _ = SIGDescribe("CustomResourceConversionWebhook [Feature:CustomResourceWebh
 	})
 
 	It("Should be able to convert from CR v1 to CR v2", func() {
-		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
+		testcrd, err := framework.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
 			&v1beta1.WebhookClientConfig{
 				CABundle: context.signingCert,
 				Service: &v1beta1.ServiceReference{
 					Namespace: f.Namespace.Name,
 					Name:      serviceCRDName,
-					Path:      pointer.StringPtr("/crdconvert"),
-					Port:      pointer.Int32Ptr(serviceCRDPort),
+					Path:      strPtr("/crdconvert"),
 				}})
 		if err != nil {
 			return
@@ -120,14 +116,13 @@ var _ = SIGDescribe("CustomResourceConversionWebhook [Feature:CustomResourceWebh
 	})
 
 	It("Should be able to convert a non homogeneous list of CRs", func() {
-		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
+		testcrd, err := framework.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
 			&v1beta1.WebhookClientConfig{
 				CABundle: context.signingCert,
 				Service: &v1beta1.ServiceReference{
 					Namespace: f.Namespace.Name,
 					Name:      serviceCRDName,
-					Path:      pointer.StringPtr("/crdconvert"),
-					Port:      pointer.Int32Ptr(serviceCRDPort),
+					Path:      strPtr("/crdconvert"),
 				}})
 		if err != nil {
 			return
@@ -272,7 +267,7 @@ func deployCustomResourceWebhookAndService(f *framework.Framework, image string,
 			Ports: []v1.ServicePort{
 				{
 					Protocol:   "TCP",
-					Port:       serviceCRDPort,
+					Port:       443,
 					TargetPort: intstr.FromInt(443),
 				},
 			},
@@ -330,7 +325,7 @@ func testCustomResourceConversionWebhook(f *framework.Framework, crd *v1beta1.Cu
 	verifyV2Object(f, crd, v2crd)
 }
 
-func testCRListConversion(f *framework.Framework, testCrd *crd.TestCrd) {
+func testCRListConversion(f *framework.Framework, testCrd *framework.TestCrd) {
 	crd := testCrd.Crd
 	customResourceClients := testCrd.DynamicClients
 	name1 := "cr-instance-1"
@@ -351,7 +346,7 @@ func testCRListConversion(f *framework.Framework, testCrd *crd.TestCrd) {
 	Expect(err).To(BeNil())
 
 	// Now cr-instance-1 is stored as v1. lets change storage version
-	crd, err = integration.UpdateCustomResourceDefinitionWithRetry(testCrd.APIExtensionClient, crd.Name, func(c *v1beta1.CustomResourceDefinition) {
+	crd, err = integration.UpdateCustomResourceDefinitionWithRetry(testCrd.ApiExtensionClient, crd.Name, func(c *v1beta1.CustomResourceDefinition) {
 		c.Spec.Versions = alternativeApiVersions
 	})
 	Expect(err).To(BeNil())

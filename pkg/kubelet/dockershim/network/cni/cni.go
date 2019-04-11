@@ -24,14 +24,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/containernetworking/cni/libcni"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	"k8s.io/klog"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
+	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/dockershim/network"
 	"k8s.io/kubernetes/pkg/util/bandwidth"
@@ -40,10 +38,6 @@ import (
 
 const (
 	CNIPluginName = "cni"
-
-	// defaultSyncConfigPeriod is the default period to sync CNI config
-	// TODO: consider making this value configurable or to be a more appropriate value.
-	defaultSyncConfigPeriod = time.Second * 5
 )
 
 type cniNetworkPlugin struct {
@@ -200,10 +194,6 @@ func (plugin *cniNetworkPlugin) Init(host network.Host, hairpinMode kubeletconfi
 	plugin.host = host
 
 	plugin.syncNetworkConfig()
-
-	// start a goroutine to sync network config from confDir periodically to detect network config updates in every 5 seconds
-	go wait.Forever(plugin.syncNetworkConfig, defaultSyncConfigPeriod)
-
 	return nil
 }
 
@@ -274,6 +264,9 @@ func (plugin *cniNetworkPlugin) Name() string {
 }
 
 func (plugin *cniNetworkPlugin) Status() error {
+	// sync network config from confDir periodically to detect network config updates
+	plugin.syncNetworkConfig()
+
 	// Can't set up pods if we don't have any CNI network configs yet
 	return plugin.checkInitialized()
 }

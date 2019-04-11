@@ -40,18 +40,18 @@ func GetDefaultMutators() map[string][]PodSpecMutatorFunc {
 	return map[string][]PodSpecMutatorFunc{
 		kubeadmconstants.KubeAPIServer: {
 			addNodeSelectorToPodSpec,
-			setControlPlaneTolerationOnPodSpec,
+			setMasterTolerationOnPodSpec,
 			setRightDNSPolicyOnPodSpec,
 			setHostIPOnPodSpec,
 		},
 		kubeadmconstants.KubeControllerManager: {
 			addNodeSelectorToPodSpec,
-			setControlPlaneTolerationOnPodSpec,
+			setMasterTolerationOnPodSpec,
 			setRightDNSPolicyOnPodSpec,
 		},
 		kubeadmconstants.KubeScheduler: {
 			addNodeSelectorToPodSpec,
-			setControlPlaneTolerationOnPodSpec,
+			setMasterTolerationOnPodSpec,
 			setRightDNSPolicyOnPodSpec,
 		},
 	}
@@ -82,7 +82,7 @@ func mutatePodSpec(mutators map[string][]PodSpecMutatorFunc, name string, podSpe
 	}
 }
 
-// addNodeSelectorToPodSpec makes Pod require to be scheduled on a node marked with the control-plane label
+// addNodeSelectorToPodSpec makes Pod require to be scheduled on a node marked with the master label
 func addNodeSelectorToPodSpec(podSpec *v1.PodSpec) {
 	if podSpec.NodeSelector == nil {
 		podSpec.NodeSelector = map[string]string{kubeadmconstants.LabelNodeRoleMaster: ""}
@@ -92,14 +92,14 @@ func addNodeSelectorToPodSpec(podSpec *v1.PodSpec) {
 	podSpec.NodeSelector[kubeadmconstants.LabelNodeRoleMaster] = ""
 }
 
-// setControlPlaneTolerationOnPodSpec makes the Pod tolerate the control-plane taint
-func setControlPlaneTolerationOnPodSpec(podSpec *v1.PodSpec) {
+// setMasterTolerationOnPodSpec makes the Pod tolerate the master taint
+func setMasterTolerationOnPodSpec(podSpec *v1.PodSpec) {
 	if podSpec.Tolerations == nil {
-		podSpec.Tolerations = []v1.Toleration{kubeadmconstants.ControlPlaneToleration}
+		podSpec.Tolerations = []v1.Toleration{kubeadmconstants.MasterToleration}
 		return
 	}
 
-	podSpec.Tolerations = append(podSpec.Tolerations, kubeadmconstants.ControlPlaneToleration)
+	podSpec.Tolerations = append(podSpec.Tolerations, kubeadmconstants.MasterToleration)
 }
 
 // setHostIPOnPodSpec sets the environment variable HOST_IP using downward API

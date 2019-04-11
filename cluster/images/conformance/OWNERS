@@ -5,18 +5,10 @@ reviewers:
   - dims
   - ixdy
   - spiffxp
-  - neolit123
-  - bentheelder
-  - brahmaroutu
-  - stevesloka
-  - johnSchnake
 approvers:
   - timothysc
   - dims
   - ixdy
   - spiffxp
-  - neolit123
-  - bentheelder
 labels:
 - sig/release
-- area/conformance

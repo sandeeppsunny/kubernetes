@@ -118,7 +118,6 @@ type cronJobStatusStrategy struct {
 	cronJobStrategy
 }
 
-// StatusStrategy is the default logic invoked when updating object status.
 var StatusStrategy = cronJobStatusStrategy{Strategy}
 
 func (cronJobStatusStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {

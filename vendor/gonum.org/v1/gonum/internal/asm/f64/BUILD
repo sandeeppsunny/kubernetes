@@ -33,7 +33,6 @@ go_library(
         "scalunitaryto_amd64.s",
         "stubs_amd64.go",
         "stubs_noasm.go",
-        "sum_amd64.s",
     ],
     importmap = "k8s.io/kubernetes/vendor/gonum.org/v1/gonum/internal/asm/f64",
     importpath = "gonum.org/v1/gonum/internal/asm/f64",

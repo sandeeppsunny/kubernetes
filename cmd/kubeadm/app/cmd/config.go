@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 
 	"github.com/lithammer/dedent"
 	"github.com/pkg/errors"
@@ -32,6 +33,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	kubeadmscheme "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/scheme"
+	kubeadmapiv1alpha3 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1alpha3"
 	kubeadmapiv1beta1 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta1"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
 	phaseutil "k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases"
@@ -60,7 +62,7 @@ var (
 
 // NewCmdConfig returns cobra.Command for "kubeadm config" command
 func NewCmdConfig(out io.Writer) *cobra.Command {
-	var kubeConfigFile string
+	kubeConfigFile := constants.GetAdminKubeConfigPath()
 
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -81,7 +83,7 @@ func NewCmdConfig(out io.Writer) *cobra.Command {
 
 	options.AddKubeConfigFlag(cmd.PersistentFlags(), &kubeConfigFile)
 
-	kubeConfigFile = cmdutil.GetKubeConfigPath(kubeConfigFile)
+	kubeConfigFile = cmdutil.FindExistingKubeConfig(kubeConfigFile)
 	cmd.AddCommand(NewCmdConfigPrint(out))
 	cmd.AddCommand(NewCmdConfigMigrate(out))
 	cmd.AddCommand(NewCmdConfigUpload(out, &kubeConfigFile))
@@ -229,6 +231,7 @@ func NewCmdConfigMigrate(out io.Writer) *cobra.Command {
 			locally in the CLI tool without ever touching anything in the cluster.
 			In this version of kubeadm, the following API versions are supported:
 			- %s
+			- %s
 
 			Further, kubeadm can only write out config of version %q, but read both types.
 			So regardless of what version you pass to the --old-config parameter here, the API object will be
@@ -237,7 +240,7 @@ func NewCmdConfigMigrate(out io.Writer) *cobra.Command {
 
 			In other words, the output of this command is what kubeadm actually would read internally if you
 			submitted this file to "kubeadm init"
-		`), kubeadmapiv1beta1.SchemeGroupVersion, kubeadmapiv1beta1.SchemeGroupVersion),
+		`), kubeadmapiv1alpha3.SchemeGroupVersion.String(), kubeadmapiv1beta1.SchemeGroupVersion.String(), kubeadmapiv1beta1.SchemeGroupVersion.String()),
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(oldCfgPath) == 0 {
 				kubeadmutil.CheckErr(errors.New("The --old-config flag is mandatory"))
@@ -420,9 +423,10 @@ func NewCmdConfigImagesPull() *cobra.Command {
 			kubeadmutil.CheckErr(err)
 			internalcfg, err := configutil.LoadOrDefaultInitConfiguration(cfgPath, externalcfg)
 			kubeadmutil.CheckErr(err)
-			containerRuntime, err := utilruntime.NewContainerRuntime(utilsexec.New(), internalcfg.NodeRegistration.CRISocket)
+			containerRuntime, err := utilruntime.NewContainerRuntime(utilsexec.New(), internalcfg.GetCRISocket())
 			kubeadmutil.CheckErr(err)
-			PullControlPlaneImages(containerRuntime, &internalcfg.ClusterConfiguration)
+			imagesPull := NewImagesPull(containerRuntime, images.GetAllImages(&internalcfg.ClusterConfiguration))
+			kubeadmutil.CheckErr(imagesPull.PullAll())
 		},
 	}
 	AddImagesCommonConfigFlags(cmd.PersistentFlags(), externalcfg, &cfgPath, &featureGatesString)
@@ -445,11 +449,10 @@ func NewImagesPull(runtime utilruntime.ContainerRuntime, images []string) *Image
 	}
 }
 
-// PullControlPlaneImages pulls all images that the ImagesPull knows about
-func PullControlPlaneImages(runtime utilruntime.ContainerRuntime, cfg *kubeadmapi.ClusterConfiguration) error {
-	images := images.GetControlPlaneImages(cfg)
-	for _, image := range images {
-		if err := runtime.PullImage(image); err != nil {
+// PullAll pulls all images that the ImagesPull knows about
+func (ip *ImagesPull) PullAll() error {
+	for _, image := range ip.images {
+		if err := ip.runtime.PullImage(image); err != nil {
 			return errors.Wrapf(err, "failed to pull image %q", image)
 		}
 		fmt.Printf("[config/images] Pulled %s\n", image)
@@ -504,7 +507,7 @@ type ImagesList struct {
 
 // Run runs the images command and writes the result to the io.Writer passed in
 func (i *ImagesList) Run(out io.Writer) error {
-	imgs := images.GetControlPlaneImages(&i.cfg.ClusterConfiguration)
+	imgs := images.GetAllImages(&i.cfg.ClusterConfiguration)
 	for _, img := range imgs {
 		fmt.Fprintln(out, img)
 	}
@@ -514,8 +517,11 @@ func (i *ImagesList) Run(out io.Writer) error {
 
 // AddImagesCommonConfigFlags adds the flags that configure kubeadm (and affect the images kubeadm will use)
 func AddImagesCommonConfigFlags(flagSet *flag.FlagSet, cfg *kubeadmapiv1beta1.InitConfiguration, cfgPath *string, featureGatesString *string) {
-	options.AddKubernetesVersionFlag(flagSet, &cfg.ClusterConfiguration.KubernetesVersion)
-	options.AddFeatureGatesStringFlag(flagSet, featureGatesString)
-	options.AddImageMetaFlags(flagSet, &cfg.ImageRepository)
+	flagSet.StringVar(
+		&cfg.ClusterConfiguration.KubernetesVersion, "kubernetes-version", cfg.ClusterConfiguration.KubernetesVersion,
+		`Choose a specific Kubernetes version for the control plane.`,
+	)
+	flagSet.StringVar(featureGatesString, "feature-gates", *featureGatesString, "A set of key=value pairs that describe feature gates for various features. "+
+		"Options are:\n"+strings.Join(features.KnownFeatures(&features.InitFeatureGates), "\n"))
 	flagSet.StringVar(cfgPath, "config", *cfgPath, "Path to kubeadm config file.")
 }

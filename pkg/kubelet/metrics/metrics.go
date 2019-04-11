@@ -80,8 +80,8 @@ const (
 	KubeletConfigKeyLabelKey      = "node_config_kubelet_key"
 
 	// Metrics keys for RuntimeClass
-	RunPodSandboxDurationKey = "run_podsandbox_duration_seconds"
-	RunPodSandboxErrorsKey   = "run_podsandbox_errors_total"
+	RunPodSandboxLatenciesKey = "run_podsandbox_latencies"
+	RunPodSandboxErrorsKey    = "run_podsandbox_errors"
 )
 
 var (
@@ -338,13 +338,11 @@ var (
 			Help:      "This metric is true (1) if the node is experiencing a configuration-related error, false (0) otherwise.",
 		},
 	)
-	RunPodSandboxDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
+	RunPodSandboxLatencies = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
 			Subsystem: KubeletSubsystem,
-			Name:      RunPodSandboxDurationKey,
-			Help:      "Duration in seconds of the run_podsandbox operations. Broken down by RuntimeClass.",
-			// Use DefBuckets for now, will customize the buckets if necessary.
-			Buckets: prometheus.DefBuckets,
+			Name:      RunPodSandboxLatenciesKey,
+			Help:      "Latencies in microseconds of the run_podsandbox operations. Broken down by RuntimeClass.",
 		},
 		[]string{"runtime_handler"},
 	)
@@ -409,7 +407,7 @@ func SinceInMicroseconds(start time.Time) float64 {
 	return float64(time.Since(start).Nanoseconds() / time.Microsecond.Nanoseconds())
 }
 
-// SinceInSeconds gets the time since the specified start in seconds.
+// Gets the time since the specified start in seconds.
 func SinceInSeconds(start time.Time) float64 {
 	return time.Since(start).Seconds()
 }

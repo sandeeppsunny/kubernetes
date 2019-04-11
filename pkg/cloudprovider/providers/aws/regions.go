@@ -22,6 +22,7 @@ import (
 	"k8s.io/klog"
 
 	"k8s.io/apimachinery/pkg/util/sets"
+	awscredentialprovider "k8s.io/kubernetes/pkg/credentialprovider/aws"
 )
 
 // wellKnownRegions is the complete list of regions known to the AWS cloudprovider
@@ -76,6 +77,8 @@ func recognizeRegion(region string) {
 	}
 
 	klog.V(4).Infof("found AWS region %q", region)
+
+	awscredentialprovider.RegisterCredentialsProvider(region)
 
 	awsRegions.Insert(region)
 }

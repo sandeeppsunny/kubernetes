@@ -25,12 +25,12 @@ import (
 	"k8s.io/kube-aggregator/pkg/apis/apiregistration"
 )
 
-func newAPIServiceForTest(name, group string, minGroupPriority, versionPriority int32, svc *apiregistration.ServiceReference) apiregistration.APIService {
+func newAPIServiceForTest(name, group string, minGroupPriority, versionPriority int32) apiregistration.APIService {
 	r := apiregistration.APIService{}
 	r.Spec.Group = group
 	r.Spec.GroupPriorityMinimum = minGroupPriority
 	r.Spec.VersionPriority = versionPriority
-	r.Spec.Service = svc
+	r.Spec.Service = &apiregistration.ServiceReference{}
 	r.Name = name
 	return r
 }
@@ -48,31 +48,22 @@ func assertSortedServices(t *testing.T, actual []openAPISpecInfo, expectedNames 
 func TestAPIServiceSort(t *testing.T) {
 	list := []openAPISpecInfo{
 		{
-			apiService: newAPIServiceForTest("FirstService", "Group1", 10, 5, &apiregistration.ServiceReference{}),
+			apiService: newAPIServiceForTest("FirstService", "Group1", 10, 5),
 			spec:       &spec.Swagger{},
 		},
 		{
-			apiService: newAPIServiceForTest("SecondService", "Group2", 15, 3, &apiregistration.ServiceReference{}),
+			apiService: newAPIServiceForTest("SecondService", "Group2", 15, 3),
 			spec:       &spec.Swagger{},
 		},
 		{
-			apiService: newAPIServiceForTest("FirstServiceInternal", "Group1", 16, 3, &apiregistration.ServiceReference{}),
+			apiService: newAPIServiceForTest("FirstServiceInternal", "Group1", 16, 3),
 			spec:       &spec.Swagger{},
 		},
 		{
-			apiService: newAPIServiceForTest("ThirdService", "Group3", 15, 3, &apiregistration.ServiceReference{}),
+			apiService: newAPIServiceForTest("ThirdService", "Group3", 15, 3),
 			spec:       &spec.Swagger{},
-		},
-		{
-			apiService: newAPIServiceForTest("local_service_1", "Group4", 15, 1, nil),
-		},
-		{
-			apiService: newAPIServiceForTest("local_service_3", "Group5", 15, 2, nil),
-		},
-		{
-			apiService: newAPIServiceForTest("local_service_2", "Group6", 15, 3, nil),
 		},
 	}
 	sortByPriority(list)
-	assertSortedServices(t, list, []string{"local_service_1", "local_service_2", "local_service_3", "FirstService", "FirstServiceInternal", "SecondService", "ThirdService"})
+	assertSortedServices(t, list, []string{"FirstService", "FirstServiceInternal", "SecondService", "ThirdService"})
 }

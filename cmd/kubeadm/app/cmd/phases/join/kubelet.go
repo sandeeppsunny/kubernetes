@@ -23,6 +23,7 @@ import (
 	"github.com/lithammer/dedent"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clientset "k8s.io/client-go/kubernetes"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog"
@@ -53,10 +54,17 @@ var (
 		`)
 )
 
+type kubeletStartData interface {
+	Cfg() *kubeadmapi.JoinConfiguration
+	ClientSetFromFile(path string) (*clientset.Clientset, error)
+	InitCfg() (*kubeadmapi.InitConfiguration, error)
+	TLSBootstrapCfg() (*clientcmdapi.Config, error)
+}
+
 // NewKubeletStartPhase creates a kubeadm workflow phase that start kubelet on a node.
 func NewKubeletStartPhase() workflow.Phase {
 	return workflow.Phase{
-		Name:  "kubelet-start [api-server-endpoint]",
+		Name:  "kubelet-start",
 		Short: "Writes kubelet settings, certificates and (re)starts the kubelet",
 		Long:  "Writes a file with KubeletConfiguration and an environment file with node specific kubelet settings, and then (re)starts kubelet.",
 		Run:   runKubeletStartJoinPhase,
@@ -64,45 +72,44 @@ func NewKubeletStartPhase() workflow.Phase {
 			options.CfgPath,
 			options.NodeCRISocket,
 			options.NodeName,
-			options.FileDiscovery,
+			options.TLSBootstrapToken,
 			options.TokenDiscovery,
 			options.TokenDiscoveryCAHash,
 			options.TokenDiscoverySkipCAHash,
-			options.TLSBootstrapToken,
 			options.TokenStr,
 		},
 	}
 }
 
-func getKubeletStartJoinData(c workflow.RunData) (*kubeadmapi.JoinConfiguration, *kubeadmapi.InitConfiguration, *clientcmdapi.Config, error) {
-	data, ok := c.(JoinData)
+func getKubeletStartJoinData(c workflow.RunData) (kubeletStartData, *kubeadmapi.JoinConfiguration, *kubeadmapi.InitConfiguration, *clientcmdapi.Config, error) {
+	data, ok := c.(kubeletStartData)
 	if !ok {
-		return nil, nil, nil, errors.New("kubelet-start phase invoked with an invalid data struct")
+		return nil, nil, nil, nil, errors.New("kubelet-start phase invoked with an invalid data struct")
 	}
 	cfg := data.Cfg()
 	initCfg, err := data.InitCfg()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	tlsBootstrapCfg, err := data.TLSBootstrapCfg()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return cfg, initCfg, tlsBootstrapCfg, nil
+	return data, cfg, initCfg, tlsBootstrapCfg, nil
 }
 
 // runKubeletStartJoinPhase executes the kubelet TLS bootstrap process.
 // This process is executed by the kubelet and completes with the node joining the cluster
 // with a dedicates set of credentials as required by the node authorizer
 func runKubeletStartJoinPhase(c workflow.RunData) error {
-	cfg, initCfg, tlsBootstrapCfg, err := getKubeletStartJoinData(c)
+	data, cfg, initCfg, tlsBootstrapCfg, err := getKubeletStartJoinData(c)
 	if err != nil {
 		return err
 	}
 	bootstrapKubeConfigFile := kubeadmconstants.GetBootstrapKubeletKubeConfigPath()
 
-	// Write the bootstrap kubelet config file or the TLS-Bootstrapped kubelet config file down to disk
-	klog.V(1).Infof("[kubelet-start] writing bootstrap kubelet config file at %s", bootstrapKubeConfigFile)
+	// Write the bootstrap kubelet config file or the TLS-Boostrapped kubelet config file down to disk
+	klog.V(1).Infoln("[join] writing bootstrap kubelet config file at", bootstrapKubeConfigFile)
 	if err := kubeconfigutil.WriteToDisk(bootstrapKubeConfigFile, tlsBootstrapCfg); err != nil {
 		return errors.Wrap(err, "couldn't save bootstrap-kubelet.conf to disk")
 	}
@@ -110,7 +117,6 @@ func runKubeletStartJoinPhase(c workflow.RunData) error {
 	// Write the ca certificate to disk so kubelet can use it for authentication
 	cluster := tlsBootstrapCfg.Contexts[tlsBootstrapCfg.CurrentContext].Cluster
 	if _, err := os.Stat(cfg.CACertPath); os.IsNotExist(err) {
-		klog.V(1).Infof("[kubelet-start] writing CA certificate at %s", cfg.CACertPath)
 		if err := certutil.WriteCert(cfg.CACertPath, tlsBootstrapCfg.Clusters[cluster].CertificateAuthorityData); err != nil {
 			return errors.Wrap(err, "couldn't save the CA certificate to disk")
 		}
@@ -121,14 +127,14 @@ func runKubeletStartJoinPhase(c workflow.RunData) error {
 		return err
 	}
 
-	bootstrapClient, err := kubeconfigutil.ClientSetFromFile(bootstrapKubeConfigFile)
+	bootstrapClient, err := data.ClientSetFromFile(bootstrapKubeConfigFile)
 	if err != nil {
 		return errors.Errorf("couldn't create client from kubeconfig file %q", bootstrapKubeConfigFile)
 	}
 
 	// Configure the kubelet. In this short timeframe, kubeadm is trying to stop/restart the kubelet
 	// Try to stop the kubelet service so no race conditions occur when configuring it
-	klog.V(1).Infoln("[kubelet-start] Stopping the kubelet")
+	klog.V(1).Infof("[kubelet-start] Stopping the kubelet")
 	kubeletphase.TryStopKubelet()
 
 	// Write the configuration for the kubelet (using the bootstrap token credentials) to disk so the kubelet can start
@@ -145,7 +151,7 @@ func runKubeletStartJoinPhase(c workflow.RunData) error {
 	}
 
 	// Try to start the kubelet service in case it's inactive
-	klog.V(1).Infoln("[kubelet-start] Starting the kubelet")
+	klog.V(1).Infof("[kubelet-start] Starting the kubelet")
 	kubeletphase.TryStartKubelet()
 
 	// Now the kubelet will perform the TLS Bootstrap, transforming /etc/kubernetes/bootstrap-kubelet.conf to /etc/kubernetes/kubelet.conf
@@ -158,12 +164,12 @@ func runKubeletStartJoinPhase(c workflow.RunData) error {
 	}
 
 	// When we know the /etc/kubernetes/kubelet.conf file is available, get the client
-	client, err := kubeconfigutil.ClientSetFromFile(kubeadmconstants.GetKubeletKubeConfigPath())
+	client, err := data.ClientSetFromFile(kubeadmconstants.GetKubeletKubeConfigPath())
 	if err != nil {
 		return err
 	}
 
-	klog.V(1).Infoln("[kubelet-start] preserving the crisocket information for the node")
+	klog.V(1).Infof("[kubelet-start] preserving the crisocket information for the node")
 	if err := patchnodephase.AnnotateCRISocket(client, cfg.NodeRegistration.Name, cfg.NodeRegistration.CRISocket); err != nil {
 		return errors.Wrap(err, "error uploading crisocket")
 	}

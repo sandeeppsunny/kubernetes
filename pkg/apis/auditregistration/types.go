@@ -168,6 +168,8 @@ type WebhookClientConfig struct {
 	//
 	// If the webhook is running within the cluster, then you should use `service`.
 	//
+	// Port 443 will be used if it is open, otherwise it is an error.
+	//
 	// +optional
 	Service *ServiceReference
 
@@ -191,9 +193,4 @@ type ServiceReference struct {
 	// this service.
 	// +optional
 	Path *string
-
-	// If specified, the port on the service that hosting webhook.
-	// `port` should be a valid port number (1-65535, inclusive).
-	// +optional
-	Port int32
 }

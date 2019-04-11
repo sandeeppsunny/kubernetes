@@ -17,7 +17,6 @@ go_library(
         "//vendor/github.com/bazelbuild/buildtools/build_proto:go_default_library",
         "//vendor/github.com/bazelbuild/buildtools/file:go_default_library",
         "//vendor/github.com/bazelbuild/buildtools/lang:go_default_library",
-        "//vendor/github.com/bazelbuild/buildtools/tables:go_default_library",
         "//vendor/github.com/bazelbuild/buildtools/wspace:go_default_library",
         "//vendor/github.com/golang/protobuf/proto:go_default_library",
     ],

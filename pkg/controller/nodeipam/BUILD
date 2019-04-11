@@ -59,7 +59,6 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
-        "//pkg/controller/nodeipam/config:all-srcs",
         "//pkg/controller/nodeipam/ipam:all-srcs",
     ],
     tags = ["automanaged"],

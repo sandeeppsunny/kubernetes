@@ -75,11 +75,9 @@ type VarSet struct {
 	set []Var
 }
 
-// Set returns a copy of the var set.
+// Set returns the var set.
 func (vs *VarSet) Set() []Var {
-	s := make([]Var, len(vs.set))
-	copy(s, vs.set)
-	return s
+	return vs.set
 }
 
 // MergeSet absorbs other vars with error on name collision.

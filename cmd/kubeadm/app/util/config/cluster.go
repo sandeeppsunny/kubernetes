@@ -59,6 +59,7 @@ func FetchInitConfigurationFromCluster(client clientset.Interface, w io.Writer, 
 
 // getInitConfigurationFromCluster is separate only for testing purposes, don't call it directly, use FetchInitConfigurationFromCluster instead
 func getInitConfigurationFromCluster(kubeconfigDir string, client clientset.Interface, newControlPlane bool) (*kubeadmapi.InitConfiguration, error) {
+	// TODO: This code should support reading the MasterConfiguration key as well for backwards-compat
 	// Also, the config map really should be KubeadmConfigConfigMap...
 	configMap, err := client.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(constants.KubeadmConfigConfigMap, metav1.GetOptions{})
 	if err != nil {
@@ -105,10 +106,10 @@ func getNodeRegistration(kubeconfigDir string, client clientset.Interface, nodeR
 		return errors.Wrap(err, "failed to get node name from kubelet config")
 	}
 
-	// gets the corresponding node and retrieves attributes stored there.
+	// gets the corresponding node and retrives attributes stored there.
 	node, err := client.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if err != nil {
-		return errors.Wrap(err, "failed to get corresponding node")
+		return errors.Wrap(err, "faild to get corresponding node")
 	}
 
 	criSocket, ok := node.ObjectMeta.Annotations[constants.AnnotationKubeadmCRISocket]
@@ -167,7 +168,7 @@ func getNodeNameFromKubeletConfig(kubeconfigDir string) (string, error) {
 // getAPIEndpoint returns the APIEndpoint for the current node
 func getAPIEndpoint(data map[string]string, nodeName string, apiEndpoint *kubeadmapi.APIEndpoint) error {
 	// gets the ClusterStatus from kubeadm-config
-	clusterStatus, err := UnmarshalClusterStatus(data)
+	clusterStatus, err := unmarshalClusterStatus(data)
 	if err != nil {
 		return err
 	}
@@ -210,7 +211,7 @@ func GetClusterStatus(client clientset.Interface) (*kubeadmapi.ClusterStatus, er
 		return nil, err
 	}
 
-	clusterStatus, err := UnmarshalClusterStatus(configMap.Data)
+	clusterStatus, err := unmarshalClusterStatus(configMap.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +219,7 @@ func GetClusterStatus(client clientset.Interface) (*kubeadmapi.ClusterStatus, er
 	return clusterStatus, nil
 }
 
-// UnmarshalClusterStatus takes raw ConfigMap.Data and converts it to a ClusterStatus object
-func UnmarshalClusterStatus(data map[string]string) (*kubeadmapi.ClusterStatus, error) {
+func unmarshalClusterStatus(data map[string]string) (*kubeadmapi.ClusterStatus, error) {
 	clusterStatusData, ok := data[constants.ClusterStatusConfigMapKey]
 	if !ok {
 		return nil, errors.Errorf("unexpected error when reading kubeadm-config ConfigMap: %s key value pair missing", constants.ClusterStatusConfigMapKey)

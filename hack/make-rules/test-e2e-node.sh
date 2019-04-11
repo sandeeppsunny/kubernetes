@@ -34,7 +34,6 @@ image_service_endpoint=${IMAGE_SERVICE_ENDPOINT:-""}
 run_until_failure=${RUN_UNTIL_FAILURE:-"false"}
 test_args=${TEST_ARGS:-""}
 system_spec_name=${SYSTEM_SPEC_NAME:-}
-extra_envs=${EXTRA_ENVS:-}
 
 # Parse the flags to pass to ginkgo
 ginkgoflags=""
@@ -149,7 +148,7 @@ if [ ${remote} = true ] ; then
     --image-project="${image_project}" --instance-name-prefix="${instance_prefix}" \
     --delete-instances="${delete_instances}" --test_args="${test_args}" --instance-metadata="${metadata}" \
     --image-config-file="${image_config_file}" --system-spec-name="${system_spec_name}" \
-    --extra-envs="${extra_envs}" --test-suite="${test_suite}" \
+    --test-suite="${test_suite}" \
     2>&1 | tee -i "${artifacts}/build-log.txt"
   exit $?
 
@@ -170,8 +169,8 @@ else
   # Test using the host the script was run on
   # Provided for backwards compatibility
   go run test/e2e_node/runner/local/run_local.go \
-    --system-spec-name="${system_spec_name}" --extra-envs="${extra_envs}" \
-    --ginkgo-flags="${ginkgoflags}" --test-flags="--container-runtime=${runtime} \
+    --system-spec-name="${system_spec_name}" --ginkgo-flags="${ginkgoflags}" \
+    --test-flags="--container-runtime=${runtime} \
     --alsologtostderr --v 4 --report-dir=${artifacts} --node-name $(hostname) \
     ${test_args}" --build-dependencies=true 2>&1 | tee -i "${artifacts}/build-log.txt"
   exit $?

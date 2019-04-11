@@ -108,7 +108,7 @@ func (kf *KunstructuredFactoryImpl) validate(u unstructured.Unstructured) error 
 	kind := u.GetKind()
 	if kind == "" {
 		return fmt.Errorf("missing kind in object %v", u)
-	} else if strings.HasSuffix(kind, "List") {
+	} else if kind == "List" {
 		return nil
 	}
 	if u.GetName() == "" {

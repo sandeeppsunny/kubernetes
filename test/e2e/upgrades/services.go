@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	"github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo"
 )
 
 // ServiceUpgradeTest tests that a service is available before and
@@ -34,7 +34,6 @@ type ServiceUpgradeTest struct {
 	svcPort      int
 }
 
-// Name returns the tracking name of the test.
 func (ServiceUpgradeTest) Name() string { return "service-upgrade" }
 
 func shouldTestPDBs() bool { return framework.ProviderIs("gce", "gke") }
@@ -46,7 +45,7 @@ func (t *ServiceUpgradeTest) Setup(f *framework.Framework) {
 
 	ns := f.Namespace
 
-	ginkgo.By("creating a TCP service " + serviceName + " with type=LoadBalancer in namespace " + ns.Name)
+	By("creating a TCP service " + serviceName + " with type=LoadBalancer in namespace " + ns.Name)
 	tcpService := jig.CreateTCPServiceOrFail(ns.Name, func(s *v1.Service) {
 		s.Spec.Type = v1.ServiceTypeLoadBalancer
 	})
@@ -57,16 +56,16 @@ func (t *ServiceUpgradeTest) Setup(f *framework.Framework) {
 	tcpIngressIP := framework.GetIngressPoint(&tcpService.Status.LoadBalancer.Ingress[0])
 	svcPort := int(tcpService.Spec.Ports[0].Port)
 
-	ginkgo.By("creating pod to be part of service " + serviceName)
+	By("creating pod to be part of service " + serviceName)
 	rc := jig.RunOrFail(ns.Name, jig.AddRCAntiAffinity)
 
 	if shouldTestPDBs() {
-		ginkgo.By("creating a PodDisruptionBudget to cover the ReplicationController")
+		By("creating a PodDisruptionBudget to cover the ReplicationController")
 		jig.CreatePDBOrFail(ns.Name, rc)
 	}
 
 	// Hit it once before considering ourselves ready
-	ginkgo.By("hitting the pod through the service's LoadBalancer")
+	By("hitting the pod through the service's LoadBalancer")
 	jig.TestReachableHTTP(tcpIngressIP, svcPort, framework.LoadBalancerLagTimeoutDefault)
 
 	t.jig = jig
@@ -96,18 +95,18 @@ func (t *ServiceUpgradeTest) Teardown(f *framework.Framework) {
 func (t *ServiceUpgradeTest) test(f *framework.Framework, done <-chan struct{}, testDuringDisruption bool) {
 	if testDuringDisruption {
 		// Continuous validation
-		ginkgo.By("continuously hitting the pod through the service's LoadBalancer")
+		By("continuously hitting the pod through the service's LoadBalancer")
 		wait.Until(func() {
 			t.jig.TestReachableHTTP(t.tcpIngressIP, t.svcPort, framework.LoadBalancerLagTimeoutDefault)
 		}, framework.Poll, done)
 	} else {
 		// Block until upgrade is done
-		ginkgo.By("waiting for upgrade to finish without checking if service remains up")
+		By("waiting for upgrade to finish without checking if service remains up")
 		<-done
 	}
 
 	// Sanity check and hit it once more
-	ginkgo.By("hitting the pod through the service's LoadBalancer")
+	By("hitting the pod through the service's LoadBalancer")
 	t.jig.TestReachableHTTP(t.tcpIngressIP, t.svcPort, framework.LoadBalancerLagTimeoutDefault)
 	t.jig.SanityCheckService(t.tcpService, v1.ServiceTypeLoadBalancer)
 }

@@ -325,7 +325,7 @@ func Register(factory info.MachineInfoFactory, fsInfo fs.FsInfo, includedMetrics
 
 	dockerAPIVersion, _ := APIVersion()
 
-	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems(includedMetrics)
+	cgroupSubsystems, err := libcontainer.GetCgroupSubsystems()
 	if err != nil {
 		return fmt.Errorf("failed to get cgroup subsystems: %v", err)
 	}

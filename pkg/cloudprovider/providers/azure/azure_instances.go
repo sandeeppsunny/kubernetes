@@ -246,7 +246,7 @@ func (az *Cloud) InstanceID(ctx context.Context, name types.NodeName) (string, e
 		}
 
 		// Get resource group name.
-		resourceGroup := strings.ToLower(metadata.Compute.ResourceGroup)
+		resourceGroup := metadata.Compute.ResourceGroup
 
 		// Compose instanceID based on nodeName for standard instance.
 		if az.VMType == vmTypeStandard {

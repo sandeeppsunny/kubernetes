@@ -19,6 +19,7 @@ package rollout
 import (
 	"github.com/lithammer/dedent"
 	"github.com/spf13/cobra"
+
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
@@ -61,7 +62,6 @@ func NewCmdRollout(f cmdutil.Factory, streams genericclioptions.IOStreams) *cobr
 	cmd.AddCommand(NewCmdRolloutResume(f, streams))
 	cmd.AddCommand(NewCmdRolloutUndo(f, streams))
 	cmd.AddCommand(NewCmdRolloutStatus(f, streams))
-	cmd.AddCommand(NewCmdRolloutRestart(f, streams))
 
 	return cmd
 }

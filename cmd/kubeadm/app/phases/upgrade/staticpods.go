@@ -436,7 +436,7 @@ func StaticPodControlPlane(client clientset.Interface, waiter apiclient.Waiter, 
 		return errors.Wrap(err, "error creating init static pod manifest files")
 	}
 
-	for _, component := range constants.ControlPlaneComponents {
+	for _, component := range constants.MasterComponents {
 		if err = upgradeComponent(component, waiter, pathMgr, cfg, beforePodHashMap[component], recoverManifests); err != nil {
 			return err
 		}

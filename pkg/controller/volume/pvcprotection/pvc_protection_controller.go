@@ -32,7 +32,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/controller/volume/protectionutil"
 	"k8s.io/kubernetes/pkg/util/metrics"
 	"k8s.io/kubernetes/pkg/util/slice"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
@@ -158,7 +157,7 @@ func (c *Controller) processPVC(pvcNamespace, pvcName string) error {
 		return err
 	}
 
-	if protectionutil.IsDeletionCandidate(pvc, volumeutil.PVCProtectionFinalizer) {
+	if isDeletionCandidate(pvc) {
 		// PVC should be deleted. Check if it's used and remove finalizer if
 		// it's not.
 		isUsed, err := c.isBeingUsed(pvc)
@@ -170,7 +169,7 @@ func (c *Controller) processPVC(pvcNamespace, pvcName string) error {
 		}
 	}
 
-	if protectionutil.NeedToAddFinalizer(pvc, volumeutil.PVCProtectionFinalizer) {
+	if needToAddFinalizer(pvc) {
 		// PVC is not being deleted -> it should have the finalizer. The
 		// finalizer should be added by admission plugin, this is just to add
 		// the finalizer to old PVCs that were created before the admission
@@ -251,7 +250,7 @@ func (c *Controller) pvcAddedUpdated(obj interface{}) {
 	}
 	klog.V(4).Infof("Got event on PVC %s", key)
 
-	if protectionutil.NeedToAddFinalizer(pvc, volumeutil.PVCProtectionFinalizer) || protectionutil.IsDeletionCandidate(pvc, volumeutil.PVCProtectionFinalizer) {
+	if needToAddFinalizer(pvc) || isDeletionCandidate(pvc) {
 		c.queue.Add(key)
 	}
 }
@@ -285,4 +284,12 @@ func (c *Controller) podAddedDeletedUpdated(obj interface{}, deleted bool) {
 			c.queue.Add(pod.Namespace + "/" + volume.PersistentVolumeClaim.ClaimName)
 		}
 	}
+}
+
+func isDeletionCandidate(pvc *v1.PersistentVolumeClaim) bool {
+	return pvc.ObjectMeta.DeletionTimestamp != nil && slice.ContainsString(pvc.ObjectMeta.Finalizers, volumeutil.PVCProtectionFinalizer, nil)
+}
+
+func needToAddFinalizer(pvc *v1.PersistentVolumeClaim) bool {
+	return pvc.ObjectMeta.DeletionTimestamp == nil && !slice.ContainsString(pvc.ObjectMeta.Finalizers, volumeutil.PVCProtectionFinalizer, nil)
 }

@@ -36,8 +36,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/cli-runtime/pkg/printers"
-	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
+	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	"k8s.io/client-go/dynamic"
 	watchtools "k8s.io/client-go/tools/watch"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -295,10 +295,9 @@ func IsDeleted(info *resource.Info, o *WaitOptions) (runtime.Object, bool, error
 		}
 
 		timeout := endTime.Sub(time.Now())
-		errWaitTimeoutWithName := extendErrWaitTimeout(wait.ErrWaitTimeout, info)
 		if timeout < 0 {
 			// we're out of time
-			return gottenObj, false, errWaitTimeoutWithName
+			return gottenObj, false, wait.ErrWaitTimeout
 		}
 
 		ctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), o.Timeout)
@@ -311,9 +310,9 @@ func IsDeleted(info *resource.Info, o *WaitOptions) (runtime.Object, bool, error
 			continue
 		case err == wait.ErrWaitTimeout:
 			if watchEvent != nil {
-				return watchEvent.Object, false, errWaitTimeoutWithName
+				return watchEvent.Object, false, wait.ErrWaitTimeout
 			}
-			return gottenObj, false, errWaitTimeoutWithName
+			return gottenObj, false, wait.ErrWaitTimeout
 		default:
 			return gottenObj, false, err
 		}
@@ -390,10 +389,9 @@ func (w ConditionalWait) IsConditionMet(info *resource.Info, o *WaitOptions) (ru
 		}
 
 		timeout := endTime.Sub(time.Now())
-		errWaitTimeoutWithName := extendErrWaitTimeout(wait.ErrWaitTimeout, info)
 		if timeout < 0 {
 			// we're out of time
-			return gottenObj, false, errWaitTimeoutWithName
+			return gottenObj, false, wait.ErrWaitTimeout
 		}
 
 		ctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), o.Timeout)
@@ -406,9 +404,9 @@ func (w ConditionalWait) IsConditionMet(info *resource.Info, o *WaitOptions) (ru
 			continue
 		case err == wait.ErrWaitTimeout:
 			if watchEvent != nil {
-				return watchEvent.Object, false, errWaitTimeoutWithName
+				return watchEvent.Object, false, wait.ErrWaitTimeout
 			}
-			return gottenObj, false, errWaitTimeoutWithName
+			return gottenObj, false, wait.ErrWaitTimeout
 		default:
 			return gottenObj, false, err
 		}
@@ -453,8 +451,4 @@ func (w ConditionalWait) isConditionMet(event watch.Event) (bool, error) {
 	}
 	obj := event.Object.(*unstructured.Unstructured)
 	return w.checkCondition(obj)
-}
-
-func extendErrWaitTimeout(err error, info *resource.Info) error {
-	return fmt.Errorf("%s on %s/%s", err.Error(), info.Mapping.Resource.Resource, info.Name)
 }

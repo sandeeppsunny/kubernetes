@@ -424,7 +424,7 @@ var _ = utils.SIGDescribe("Pod Disks", func() {
 							return true, nil
 						}
 					})
-					framework.ExpectNoError(err, fmt.Sprintf("failed to evict host0Pod after %v", podEvictTimeout))
+					Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("failed to evict host0Pod after %v", podEvictTimeout))
 				}
 
 				By("waiting for pd to detach from host0")

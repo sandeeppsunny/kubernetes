@@ -15,7 +15,7 @@ metadata:
   name: ip-masq-agent
   namespace: kube-system
   labels:
-    addonmanager.kubernetes.io/mode: Reconcile
+    addonmanager.kubernetes.io/mode: Reconcile  
 spec:
   selector:
     matchLabels:
@@ -45,8 +45,7 @@ spec:
           - name: config
             mountPath: /etc/config
       nodeSelector:
-        # TODO(liggitt): switch to node.kubernetes.io/masq-agent-ds-ready in 1.16
-        beta.kubernetes.io/masq-agent-ds-ready: "true"
+        beta.kubernetes.io/masq-agent-ds-ready: "true"  
       volumes:
         - name: config
           configMap:

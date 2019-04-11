@@ -70,7 +70,7 @@ func (az *Cloud) getStandardMachineID(resourceGroup, machineName string) string 
 	return fmt.Sprintf(
 		machineIDTemplate,
 		az.SubscriptionID,
-		strings.ToLower(resourceGroup),
+		resourceGroup,
 		machineName)
 }
 
@@ -223,12 +223,12 @@ func getBackendPoolName(clusterName string) string {
 	return clusterName
 }
 
-func (az *Cloud) getLoadBalancerRuleName(service *v1.Service, protocol v1.Protocol, port int32, subnetName *string) string {
+func (az *Cloud) getLoadBalancerRuleName(service *v1.Service, port v1.ServicePort, subnetName *string) string {
 	prefix := az.getRulePrefix(service)
 	if subnetName == nil {
-		return fmt.Sprintf("%s-%s-%d", prefix, protocol, port)
+		return fmt.Sprintf("%s-%s-%d", prefix, port.Protocol, port.Port)
 	}
-	return fmt.Sprintf("%s-%s-%s-%d", prefix, *subnetName, protocol, port)
+	return fmt.Sprintf("%s-%s-%s-%d", prefix, *subnetName, port.Protocol, port.Port)
 }
 
 func (az *Cloud) getSecurityRuleName(service *v1.Service, port v1.ServicePort, sourceAddrPrefix string) string {
@@ -339,14 +339,7 @@ func (as *availabilitySet) GetInstanceIDByNodeName(name string) (string, error) 
 			return "", err
 		}
 	}
-
-	resourceID := *machine.ID
-	convertedResourceID, err := convertResourceGroupNameToLower(resourceID)
-	if err != nil {
-		klog.Errorf("convertResourceGroupNameToLower failed with error: %v", err)
-		return "", err
-	}
-	return convertedResourceID, nil
+	return *machine.ID, nil
 }
 
 // GetPowerStatusByNodeName returns the power state of the specified node.

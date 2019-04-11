@@ -22,14 +22,14 @@ import (
 	"strings"
 	"testing"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	v1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/keyutil"
+	certutil "k8s.io/client-go/util/cert"
 	serviceaccountcontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 )
@@ -98,12 +98,12 @@ X2i8uIp/C/ASqiIGUeeKQtX0/IR3qCXyThP/dbCiHrF3v1cuhBOHY8CLVg==
 -----END PUBLIC KEY-----`
 
 func getPrivateKey(data string) interface{} {
-	key, _ := keyutil.ParsePrivateKeyPEM([]byte(data))
+	key, _ := certutil.ParsePrivateKeyPEM([]byte(data))
 	return key
 }
 
 func getPublicKey(data string) interface{} {
-	keys, _ := keyutil.ParsePublicKeysPEM([]byte(data))
+	keys, _ := certutil.ParsePublicKeysPEM([]byte(data))
 	return keys[0]
 }
 func TestTokenGenerateAndValidate(t *testing.T) {

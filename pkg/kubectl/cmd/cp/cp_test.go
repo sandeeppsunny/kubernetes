@@ -191,33 +191,27 @@ func TestStripPathShortcuts(t *testing.T) {
 	}
 }
 
-func checkErr(t *testing.T, err error) {
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-		t.FailNow()
-	}
-}
-
 func TestTarUntar(t *testing.T) {
 	dir, err := ioutil.TempDir("", "input")
-	checkErr(t, err)
-	dir2, err := ioutil.TempDir("", "output")
-	checkErr(t, err)
-	dir3, err := ioutil.TempDir("", "dir")
-	checkErr(t, err)
-
+	dir2, err2 := ioutil.TempDir("", "output")
+	if err != nil || err2 != nil {
+		t.Errorf("unexpected error: %v | %v", err, err2)
+		t.FailNow()
+	}
 	dir = dir + "/"
 	defer func() {
-		os.RemoveAll(dir)
-		os.RemoveAll(dir2)
-		os.RemoveAll(dir3)
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("Unexpected error cleaning up: %v", err)
+		}
+		if err := os.RemoveAll(dir2); err != nil {
+			t.Errorf("Unexpected error cleaning up: %v", err)
+		}
 	}()
 
 	files := []struct {
 		name     string
 		nameList []string
 		data     string
-		omitted  bool
 		fileType FileType
 	}{
 		{
@@ -242,24 +236,7 @@ func TestTarUntar(t *testing.T) {
 		},
 		{
 			name:     "gakki",
-			data:     "tmp/gakki",
-			fileType: SymLink,
-		},
-		{
-			name:     "relative_to_dest",
-			data:     path.Join(dir2, "foo"),
-			fileType: SymLink,
-		},
-		{
-			name:     "tricky_relative",
-			data:     path.Join(dir3, "xyz"),
-			omitted:  true,
-			fileType: SymLink,
-		},
-		{
-			name:     "absolute_path",
 			data:     "/tmp/gakki",
-			omitted:  true,
 			fileType: SymLink,
 		},
 		{
@@ -291,15 +268,13 @@ func TestTarUntar(t *testing.T) {
 		}
 	}
 
-	opts := NewCopyOptions(genericclioptions.NewTestIOStreamsDiscard())
-
 	writer := &bytes.Buffer{}
 	if err := makeTar(dir, dir, writer); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	reader := bytes.NewBuffer(writer.Bytes())
-	if err := opts.untarAll(reader, dir2, ""); err != nil {
+	if err := untarAll(reader, dir2, ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -311,12 +286,7 @@ func TestTarUntar(t *testing.T) {
 			cmpFileData(t, filePath, file.data)
 		} else if file.fileType == SymLink {
 			dest, err := os.Readlink(filePath)
-			if file.omitted {
-				if err != nil && strings.Contains(err.Error(), "no such file or directory") {
-					continue
-				}
-				t.Fatalf("expected to omit symlink for %s", filePath)
-			}
+
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -331,38 +301,6 @@ func TestTarUntar(t *testing.T) {
 		} else {
 			t.Fatalf("unexpected file type: %v", file)
 		}
-	}
-}
-
-func TestTarUntarWrongPrefix(t *testing.T) {
-	dir, err := ioutil.TempDir("", "input")
-	checkErr(t, err)
-	dir2, err := ioutil.TempDir("", "output")
-	checkErr(t, err)
-
-	dir = dir + "/"
-	defer func() {
-		os.RemoveAll(dir)
-		os.RemoveAll(dir2)
-	}()
-
-	filepath := path.Join(dir, "foo")
-	if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	createTmpFile(t, filepath, "sample data")
-
-	opts := NewCopyOptions(genericclioptions.NewTestIOStreamsDiscard())
-
-	writer := &bytes.Buffer{}
-	if err := makeTar(dir, dir, writer); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	reader := bytes.NewBuffer(writer.Bytes())
-	err = opts.untarAll(reader, dir2, "verylongprefix-showing-the-tar-was-tempered-with")
-	if err == nil || !strings.Contains(err.Error(), "tar contents corrupted") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -438,8 +376,7 @@ func TestCopyToLocalFileOrDir(t *testing.T) {
 			}
 			defer srcTarFile.Close()
 
-			opts := NewCopyOptions(genericclioptions.NewTestIOStreamsDiscard())
-			if err := opts.untarAll(srcTarFile, destPath, getPrefix(srcFilePath)); err != nil {
+			if err := untarAll(srcTarFile, destPath, getPrefix(srcFilePath)); err != nil {
 				t.Errorf("unexpected error: %v", err)
 				t.FailNow()
 			}
@@ -566,8 +503,7 @@ func TestBadTar(t *testing.T) {
 		t.FailNow()
 	}
 
-	opts := NewCopyOptions(genericclioptions.NewTestIOStreamsDiscard())
-	if err := opts.untarAll(&buf, dir, "/prefix"); err != nil {
+	if err := untarAll(&buf, dir, "/prefix"); err != nil {
 		t.Errorf("unexpected error: %v ", err)
 		t.FailNow()
 	}

@@ -30,9 +30,8 @@ import (
 )
 
 const (
-	successfulUpdateDelay      = time.Minute
-	successfulUpdateDelayLocal = time.Second
-	failedUpdateMaxExpDelay    = time.Hour
+	successfulUpdateDelay   = time.Minute
+	failedUpdateMaxExpDelay = time.Hour
 )
 
 type syncAction int
@@ -65,11 +64,6 @@ func NewAggregationController(downloader *aggregator.Downloader, openAPIAggregat
 
 	c.syncHandler = c.sync
 
-	// update each service at least once, also those which are not coming from APIServices, namely local services
-	for _, name := range openAPIAggregationManager.GetAPIServiceNames() {
-		c.queue.AddAfter(name, time.Second)
-	}
-
 	return c
 }
 
@@ -99,13 +93,7 @@ func (c *AggregationController) processNextWorkItem() bool {
 		return false
 	}
 
-	if aggregator.IsLocalAPIService(key.(string)) {
-		// for local delegation targets that are aggregated once per second, log at
-		// higher level to avoid flooding the log
-		klog.V(5).Infof("OpenAPI AggregationController: Processing item %s", key)
-	} else {
-		klog.Infof("OpenAPI AggregationController: Processing item %s", key)
-	}
+	klog.Infof("OpenAPI AggregationController: Processing item %s", key)
 
 	action, err := c.syncHandler(key.(string))
 	if err == nil {
@@ -116,13 +104,8 @@ func (c *AggregationController) processNextWorkItem() bool {
 
 	switch action {
 	case syncRequeue:
-		if aggregator.IsLocalAPIService(key.(string)) {
-			klog.V(7).Infof("OpenAPI AggregationController: action for local item %s: Requeue after %s.", key, successfulUpdateDelayLocal)
-			c.queue.AddAfter(key, successfulUpdateDelayLocal)
-		} else {
-			klog.V(7).Infof("OpenAPI AggregationController: action for item %s: Requeue.", key)
-			c.queue.AddAfter(key, successfulUpdateDelay)
-		}
+		klog.Infof("OpenAPI AggregationController: action for item %s: Requeue.", key)
+		c.queue.AddAfter(key, successfulUpdateDelay)
 	case syncRequeueRateLimited:
 		klog.Infof("OpenAPI AggregationController: action for item %s: Rate Limited Requeue.", key)
 		c.queue.AddRateLimited(key)

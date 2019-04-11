@@ -32,28 +32,25 @@ import (
 )
 
 func init() {
-	framework.RegisterProvider("aws", newProvider)
+	framework.RegisterProvider("aws", NewProvider)
 }
 
-func newProvider() (framework.ProviderInterface, error) {
+func NewProvider() (framework.ProviderInterface, error) {
 	if framework.TestContext.CloudConfig.Zone == "" {
 		return nil, fmt.Errorf("gce-zone must be specified for AWS")
 	}
 	return &Provider{}, nil
 }
 
-// Provider is a structure to handle AWS clouds for e2e testing
 type Provider struct {
 	framework.NullProvider
 }
 
-// ResizeGroup resizes an instance group
 func (p *Provider) ResizeGroup(group string, size int32) error {
 	client := autoscaling.New(session.New())
 	return awscloud.ResizeInstanceGroup(client, group, int(size))
 }
 
-// GroupSize returns the size of an instance group
 func (p *Provider) GroupSize(group string) (int, error) {
 	client := autoscaling.New(session.New())
 	instanceGroup, err := awscloud.DescribeInstanceGroup(client, group)
@@ -66,7 +63,6 @@ func (p *Provider) GroupSize(group string) (int, error) {
 	return instanceGroup.CurrentSize()
 }
 
-// DeleteNode deletes a node which is specified as the argument
 func (p *Provider) DeleteNode(node *v1.Node) error {
 	client := newAWSClient("")
 
@@ -84,7 +80,6 @@ func (p *Provider) DeleteNode(node *v1.Node) error {
 	return err
 }
 
-// CreatePD creates a persistent volume on the specified availability zone
 func (p *Provider) CreatePD(zone string) (string, error) {
 	client := newAWSClient(zone)
 	request := &ec2.CreateVolumeInput{}
@@ -103,7 +98,6 @@ func (p *Provider) CreatePD(zone string) (string, error) {
 	return volumeName, nil
 }
 
-// DeletePD deletes a persistent volume
 func (p *Provider) DeletePD(pdName string) error {
 	client := newAWSClient("")
 
@@ -122,7 +116,6 @@ func (p *Provider) DeletePD(pdName string) error {
 	return nil
 }
 
-// CreatePVSource creates a persistent volume source
 func (p *Provider) CreatePVSource(zone, diskName string) (*v1.PersistentVolumeSource, error) {
 	return &v1.PersistentVolumeSource{
 		AWSElasticBlockStore: &v1.AWSElasticBlockStoreVolumeSource{
@@ -132,7 +125,6 @@ func (p *Provider) CreatePVSource(zone, diskName string) (*v1.PersistentVolumeSo
 	}, nil
 }
 
-// DeletePVSource deletes a persistent volume source
 func (p *Provider) DeletePVSource(pvSource *v1.PersistentVolumeSource) error {
 	return framework.DeletePDWithRetry(pvSource.AWSElasticBlockStore.VolumeID)
 }

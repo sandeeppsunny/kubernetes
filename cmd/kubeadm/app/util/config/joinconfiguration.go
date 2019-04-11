@@ -34,11 +34,11 @@ import (
 
 // SetJoinDynamicDefaults checks and sets configuration values for the JoinConfiguration object
 func SetJoinDynamicDefaults(cfg *kubeadmapi.JoinConfiguration) error {
-	addControlPlaneTaint := false
+	addMasterTaint := false
 	if cfg.ControlPlane != nil {
-		addControlPlaneTaint = true
+		addMasterTaint = true
 	}
-	if err := SetNodeRegistrationDynamicDefaults(&cfg.NodeRegistration, addControlPlaneTaint); err != nil {
+	if err := SetNodeRegistrationDynamicDefaults(&cfg.NodeRegistration, addMasterTaint); err != nil {
 		return err
 	}
 
@@ -84,12 +84,12 @@ func LoadJoinConfigurationFromFile(cfgPath string) (*kubeadmapi.JoinConfiguratio
 		return nil, err
 	}
 
-	return documentMapToJoinConfiguration(gvkmap, false)
+	return documentMapToJoinConfiguration(gvkmap)
 }
 
 // documentMapToJoinConfiguration takes a map between GVKs and YAML documents (as returned by SplitYAMLDocuments),
 // finds a JoinConfiguration, decodes it, dynamically defaults it and then validates it prior to return.
-func documentMapToJoinConfiguration(gvkmap map[schema.GroupVersionKind][]byte, allowDeprecated bool) (*kubeadmapi.JoinConfiguration, error) {
+func documentMapToJoinConfiguration(gvkmap map[schema.GroupVersionKind][]byte) (*kubeadmapi.JoinConfiguration, error) {
 	joinBytes := []byte{}
 	for gvk, bytes := range gvkmap {
 		// not interested in anything other than JoinConfiguration
@@ -97,8 +97,8 @@ func documentMapToJoinConfiguration(gvkmap map[schema.GroupVersionKind][]byte, a
 			continue
 		}
 
-		// check if this version is supported and possibly not deprecated
-		if err := validateSupportedVersion(gvk.GroupVersion(), allowDeprecated); err != nil {
+		// check if this version is supported one
+		if err := ValidateSupportedVersion(gvk.GroupVersion()); err != nil {
 			return nil, err
 		}
 

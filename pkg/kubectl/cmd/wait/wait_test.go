@@ -18,9 +18,11 @@ package wait
 
 import (
 	"io/ioutil"
-	"strings"
 	"testing"
+
 	"time"
+
+	"strings"
 
 	"github.com/davecgh/go-spew/spew"
 
@@ -30,10 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	"k8s.io/cli-runtime/pkg/printers"
-	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
+	"k8s.io/cli-runtime/pkg/genericclioptions/resource"
 	dynamicfakeclient "k8s.io/client-go/dynamic/fake"
 	clienttesting "k8s.io/client-go/testing"
 )
@@ -200,7 +203,7 @@ func TestWaitForDeletion(t *testing.T) {
 			},
 			timeout: 1 * time.Second,
 
-			expectedErr: "timed out waiting for the condition on theresource/name-foo",
+			expectedErr: wait.ErrWaitTimeout.Error(),
 			validateActions: func(t *testing.T, actions []clienttesting.Action) {
 				if len(actions) != 2 {
 					t.Fatal(spew.Sdump(actions))
@@ -251,7 +254,7 @@ func TestWaitForDeletion(t *testing.T) {
 			},
 			timeout: 3 * time.Second,
 
-			expectedErr: "timed out waiting for the condition on theresource/name-foo",
+			expectedErr: wait.ErrWaitTimeout.Error(),
 			validateActions: func(t *testing.T, actions []clienttesting.Action) {
 				if len(actions) != 4 {
 					t.Fatal(spew.Sdump(actions))
@@ -551,7 +554,7 @@ func TestWaitForCondition(t *testing.T) {
 			},
 			timeout: 1 * time.Second,
 
-			expectedErr: "timed out waiting for the condition on theresource/name-foo",
+			expectedErr: wait.ErrWaitTimeout.Error(),
 			validateActions: func(t *testing.T, actions []clienttesting.Action) {
 				if len(actions) != 2 {
 					t.Fatal(spew.Sdump(actions))
@@ -602,7 +605,7 @@ func TestWaitForCondition(t *testing.T) {
 			},
 			timeout: 3 * time.Second,
 
-			expectedErr: "timed out waiting for the condition on theresource/name-foo",
+			expectedErr: wait.ErrWaitTimeout.Error(),
 			validateActions: func(t *testing.T, actions []clienttesting.Action) {
 				if len(actions) != 4 {
 					t.Fatal(spew.Sdump(actions))

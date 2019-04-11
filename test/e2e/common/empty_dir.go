@@ -218,7 +218,6 @@ var _ = Describe("[sig-storage] EmptyDir volumes", func() {
 			busyBoxMainContainerName   = "busybox-main-container"
 			busyBoxSubContainerName    = "busybox-sub-container"
 			resultString               = ""
-			deletionGracePeriod        = int64(0)
 		)
 
 		pod := &v1.Pod{
@@ -239,7 +238,7 @@ var _ = Describe("[sig-storage] EmptyDir volumes", func() {
 						Name:    busyBoxMainContainerName,
 						Image:   imageutils.GetE2EImage(imageutils.BusyBox),
 						Command: []string{"/bin/sh"},
-						Args:    []string{"-c", "sleep 100000"},
+						Args:    []string{"-c", "sleep 10"},
 						VolumeMounts: []v1.VolumeMount{
 							{
 								Name:      volumeName,
@@ -260,8 +259,7 @@ var _ = Describe("[sig-storage] EmptyDir volumes", func() {
 						},
 					},
 				},
-				TerminationGracePeriodSeconds: &deletionGracePeriod,
-				RestartPolicy:                 v1.RestartPolicyNever,
+				RestartPolicy: v1.RestartPolicyNever,
 			},
 		}
 

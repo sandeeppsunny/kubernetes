@@ -205,9 +205,8 @@ func (pf *PortForwarder) forward() error {
 	var err error
 
 	listenSuccess := false
-	for i := range pf.ports {
-		port := &pf.ports[i]
-		err = pf.listenOnPort(port)
+	for _, port := range pf.ports {
+		err = pf.listenOnPort(&port)
 		switch {
 		case err == nil:
 			listenSuccess = true

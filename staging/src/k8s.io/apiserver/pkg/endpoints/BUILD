@@ -46,7 +46,6 @@ go_test(
         "//staging/src/k8s.io/apiserver/pkg/audit/policy:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/endpoints/filters:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/endpoints/handlers:go_default_library",
-        "//staging/src/k8s.io/apiserver/pkg/endpoints/handlers/negotiation:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/endpoints/handlers/responsewriters:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/endpoints/request:go_default_library",
         "//staging/src/k8s.io/apiserver/pkg/endpoints/testing:go_default_library",

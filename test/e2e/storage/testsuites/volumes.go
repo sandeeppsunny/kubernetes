@@ -23,8 +23,10 @@ package testsuites
 
 import (
 	"fmt"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,10 +63,6 @@ func InitVolumesTestSuite() TestSuite {
 				testpatterns.XfsInlineVolume,
 				testpatterns.XfsPreprovisionedPV,
 				testpatterns.XfsDynamicPV,
-				// ntfs
-				testpatterns.NtfsInlineVolume,
-				testpatterns.NtfsPreprovisionedPV,
-				testpatterns.NtfsDynamicPV,
 			},
 		},
 	}
@@ -91,84 +89,101 @@ func skipExecTest(driver TestDriver) {
 	}
 }
 
-func (t *volumesTestSuite) defineTests(driver TestDriver, pattern testpatterns.TestPattern) {
-	type local struct {
-		config      *PerTestConfig
-		testCleanup func()
+func createVolumesTestInput(pattern testpatterns.TestPattern, resource genericVolumeTestResource) volumesTestInput {
+	var fsGroup *int64
+	driver := resource.driver
+	dInfo := driver.GetDriverInfo()
+	f := dInfo.Config.Framework
+	volSource := resource.volSource
 
-		resource *genericVolumeTestResource
-	}
-	var dInfo = driver.GetDriverInfo()
-	var l local
-
-	// No preconditions to test. Normally they would be in a BeforeEach here.
-
-	// This intentionally comes after checking the preconditions because it
-	// registers its own BeforeEach which creates the namespace. Beware that it
-	// also registers an AfterEach which renders f unusable. Any code using
-	// f must run inside an It or Context callback.
-	f := framework.NewDefaultFramework("volume")
-
-	init := func() {
-		l = local{}
-
-		// Now do the more expensive test initialization.
-		l.config, l.testCleanup = driver.PrepareTest(f)
-		l.resource = createGenericVolumeTestResource(driver, l.config, pattern)
-		if l.resource.volSource == nil {
-			framework.Skipf("Driver %q does not define volumeSource - skipping", dInfo.Name)
-		}
+	if volSource == nil {
+		framework.Skipf("Driver %q does not define volumeSource - skipping", dInfo.Name)
 	}
 
-	cleanup := func() {
-		if l.resource != nil {
-			l.resource.cleanupResource()
-			l.resource = nil
-		}
-
-		if l.testCleanup != nil {
-			l.testCleanup()
-			l.testCleanup = nil
-		}
+	if dInfo.Capabilities[CapFsGroup] {
+		fsGroupVal := int64(1234)
+		fsGroup = &fsGroupVal
 	}
 
-	It("should be mountable", func() {
-		skipPersistenceTest(driver)
-		init()
-		defer func() {
-			framework.VolumeTestCleanup(f, convertTestConfig(l.config))
-			cleanup()
-		}()
-
-		tests := []framework.VolumeTest{
+	return volumesTestInput{
+		f:        f,
+		name:     dInfo.Name,
+		config:   &dInfo.Config,
+		fsGroup:  fsGroup,
+		resource: resource,
+		fsType:   pattern.FsType,
+		tests: []framework.VolumeTest{
 			{
-				Volume: *l.resource.volSource,
+				Volume: *volSource,
 				File:   "index.html",
 				// Must match content
 				ExpectedContent: fmt.Sprintf("Hello from %s from namespace %s",
 					dInfo.Name, f.Namespace.Name),
 			},
-		}
-		config := convertTestConfig(l.config)
-		var fsGroup *int64
-		if framework.NodeOSDistroIs("windows") && dInfo.Capabilities[CapFsGroup] {
-			fsGroupVal := int64(1234)
-			fsGroup = &fsGroupVal
-		}
-		// We set same fsGroup for both pods, because for same volumes (e.g.
-		// local), plugin skips setting fsGroup if volume is already mounted
-		// and we don't have reliable way to detect volumes are unmounted or
-		// not before starting the second pod.
-		framework.InjectHTML(f.ClientSet, config, fsGroup, tests[0].Volume, tests[0].ExpectedContent)
-		framework.TestVolumeClient(f.ClientSet, config, fsGroup, pattern.FsType, tests)
+		},
+	}
+}
+
+func (t *volumesTestSuite) execTest(driver TestDriver, pattern testpatterns.TestPattern) {
+	Context(getTestNameStr(t, pattern), func() {
+		var (
+			resource     genericVolumeTestResource
+			input        volumesTestInput
+			needsCleanup bool
+		)
+
+		BeforeEach(func() {
+			needsCleanup = false
+			// Skip unsupported tests to avoid unnecessary resource initialization
+			skipUnsupportedTest(t, driver, pattern)
+			needsCleanup = true
+
+			// Setup test resource for driver and testpattern
+			resource = genericVolumeTestResource{}
+			resource.setupResource(driver, pattern)
+
+			// Create test input
+			input = createVolumesTestInput(pattern, resource)
+		})
+
+		AfterEach(func() {
+			if needsCleanup {
+				resource.cleanupResource(driver, pattern)
+			}
+		})
+
+		testVolumes(&input)
 	})
+}
 
+type volumesTestInput struct {
+	f        *framework.Framework
+	name     string
+	config   *TestConfig
+	fsGroup  *int64
+	fsType   string
+	tests    []framework.VolumeTest
+	resource genericVolumeTestResource
+}
+
+func testVolumes(input *volumesTestInput) {
+	It("should be mountable", func() {
+		f := input.f
+		cs := f.ClientSet
+		defer framework.VolumeTestCleanup(f, convertTestConfig(input.config))
+
+		skipPersistenceTest(input.resource.driver)
+
+		volumeTest := input.tests
+		config := convertTestConfig(input.config)
+		framework.InjectHtml(cs, config, volumeTest[0].Volume, volumeTest[0].ExpectedContent)
+		framework.TestVolumeClient(cs, config, input.fsGroup, input.fsType, input.tests)
+	})
 	It("should allow exec of files on the volume", func() {
-		skipExecTest(driver)
-		init()
-		defer cleanup()
+		f := input.f
+		skipExecTest(input.resource.driver)
 
-		testScriptInPod(f, l.resource.volType, l.resource.volSource, l.config.ClientNodeSelector)
+		testScriptInPod(f, input.resource.volType, input.resource.volSource, input.resource.driver.GetDriverInfo().Config.ClientNodeSelector)
 	})
 }
 
@@ -183,14 +198,10 @@ func testScriptInPod(
 		volName = "vol1"
 	)
 	suffix := generateSuffixForPodName(volumeType)
-	fileName := fmt.Sprintf("test-%s", suffix)
-	var content string
-	if framework.NodeOSDistroIs("windows") {
-		content = fmt.Sprintf("ls -n %s", volPath)
-	} else {
-		content = fmt.Sprintf("ls %s", volPath)
-	}
-	command := framework.GenerateWriteandExecuteScriptFileCmd(content, fileName, volPath)
+	scriptName := fmt.Sprintf("test-%s.sh", suffix)
+	fullPath := filepath.Join(volPath, scriptName)
+	cmd := fmt.Sprintf("echo \"ls %s\" > %s; chmod u+x %s; %s", volPath, fullPath, fullPath, fullPath)
+
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("exec-volume-test-%s", suffix),
@@ -200,8 +211,8 @@ func testScriptInPod(
 			Containers: []v1.Container{
 				{
 					Name:    fmt.Sprintf("exec-container-%s", suffix),
-					Image:   framework.GetTestImage(imageutils.GetE2EImage(imageutils.Nginx)),
-					Command: command,
+					Image:   imageutils.GetE2EImage(imageutils.Nginx),
+					Command: []string{"/bin/sh", "-ec", cmd},
 					VolumeMounts: []v1.VolumeMount{
 						{
 							Name:      volName,
@@ -221,9 +232,9 @@ func testScriptInPod(
 		},
 	}
 	By(fmt.Sprintf("Creating pod %s", pod.Name))
-	f.TestContainerOutput("exec-volume-test", pod, 0, []string{fileName})
+	f.TestContainerOutput("exec-volume-test", pod, 0, []string{scriptName})
 
 	By(fmt.Sprintf("Deleting pod %s", pod.Name))
 	err := framework.DeletePodWithWait(f, f.ClientSet, pod)
-	framework.ExpectNoError(err, "while deleting pod")
+	Expect(err).NotTo(HaveOccurred(), "while deleting pod")
 }

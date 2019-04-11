@@ -15,8 +15,7 @@ spec:
       serviceAccountName: csi-mock
       containers:
         - name: csi-cluster-driver-registrar
-          # TODO: replace with official image
-          image: quay.io/k8scsi/csi-cluster-driver-registrar:tmp-test-1.14
+          image: quay.io/k8scsi/csi-cluster-driver-registrar:canary
           args:
             - --v=5
             - --csi-address=$(ADDRESS)

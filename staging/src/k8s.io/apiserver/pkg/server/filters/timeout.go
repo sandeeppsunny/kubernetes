@@ -92,27 +92,23 @@ func (t *timeoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// resultCh is used as both errCh and stopCh
-	resultCh := make(chan interface{})
+	errCh := make(chan interface{})
 	tw := newTimeoutWriter(w)
 	go func() {
 		defer func() {
 			err := recover()
 			if err != nil {
-				// Same as stdlib http server code. Manually allocate stack
-				// trace buffer size to prevent excessively large logs
 				const size = 64 << 10
 				buf := make([]byte, size)
 				buf = buf[:runtime.Stack(buf, false)]
 				err = fmt.Sprintf("%v\n%s", err, buf)
 			}
-			resultCh <- err
+			errCh <- err
 		}()
 		t.handler.ServeHTTP(tw, r)
 	}()
 	select {
-	case err := <-resultCh:
-		// panic if error occurs; stop otherwise
+	case err := <-errCh:
 		if err != nil {
 			panic(err)
 		}

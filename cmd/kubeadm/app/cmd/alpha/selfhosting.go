@@ -53,7 +53,7 @@ var (
 		` + cmdutil.AlphaDisclaimer)
 
 	selfhostingExample = normalizer.Examples(`
-		# Converts a static Pod-hosted control plane into a self-hosted one.
+		# Converts a static Pod-hosted control plane into a self-hosted one. 
 
 		kubeadm alpha phase self-hosting convert-from-staticpods
 		`)
@@ -79,8 +79,9 @@ func getSelfhostingSubCommand(in io.Reader) *cobra.Command {
 	// Default values for the cobra help text
 	kubeadmscheme.Scheme.Default(cfg)
 
-	var cfgPath, featureGatesString, kubeConfigFile string
+	var cfgPath, featureGatesString string
 	forcePivot, certsInSecrets := false, false
+	kubeConfigFile := constants.GetAdminKubeConfigPath()
 
 	// Creates the UX Command
 	cmd := &cobra.Command{
@@ -118,7 +119,7 @@ func getSelfhostingSubCommand(in io.Reader) *cobra.Command {
 			}
 
 			// Gets the Kubernetes client
-			kubeConfigFile = cmdutil.GetKubeConfigPath(kubeConfigFile)
+			kubeConfigFile = cmdutil.FindExistingKubeConfig(kubeConfigFile)
 			client, err := kubeconfigutil.ClientSetFromFile(kubeConfigFile)
 			kubeadmutil.CheckErr(err)
 

@@ -75,6 +75,8 @@ type Reconciler interface {
 //   this node, and therefore the volume manager should not
 // loopSleepDuration - the amount of time the reconciler loop sleeps between
 //   successive executions
+//   syncDuration - the amount of time the syncStates sleeps between
+//   successive executions
 // waitForAttachTimeout - the amount of time the Mount function will wait for
 //   the volume to be attached
 // nodeName - the Name for this node, used by Attach and Detach methods
@@ -92,6 +94,7 @@ func NewReconciler(
 	kubeClient clientset.Interface,
 	controllerAttachDetachEnabled bool,
 	loopSleepDuration time.Duration,
+	syncDuration time.Duration,
 	waitForAttachTimeout time.Duration,
 	nodeName types.NodeName,
 	desiredStateOfWorld cache.DesiredStateOfWorld,
@@ -105,6 +108,7 @@ func NewReconciler(
 		kubeClient:                    kubeClient,
 		controllerAttachDetachEnabled: controllerAttachDetachEnabled,
 		loopSleepDuration:             loopSleepDuration,
+		syncDuration:                  syncDuration,
 		waitForAttachTimeout:          waitForAttachTimeout,
 		nodeName:                      nodeName,
 		desiredStateOfWorld:           desiredStateOfWorld,
@@ -337,7 +341,7 @@ func (rc *reconciler) StatesHasBeenSynced() bool {
 type podVolume struct {
 	podName        volumetypes.UniquePodName
 	volumeSpecName string
-	volumePath     string
+	mountPath      string
 	pluginName     string
 	volumeMode     v1.PersistentVolumeMode
 }
@@ -473,7 +477,7 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (*reconstructedVolume,
 		pod.UID,
 		volume.podName,
 		volume.volumeSpecName,
-		volume.volumePath,
+		volume.mountPath,
 		volume.pluginName)
 	if err != nil {
 		return nil, err
@@ -488,6 +492,15 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (*reconstructedVolume,
 	} else {
 		uniqueVolumeName = util.GetUniqueVolumeNameFromSpecWithPod(volume.podName, plugin, volumeSpec)
 	}
+	// Check existence of mount point for filesystem volume or symbolic link for block volume
+	isExist, checkErr := rc.operationExecutor.CheckVolumeExistenceOperation(volumeSpec, volume.mountPath, volumeSpec.Name(), rc.mounter, uniqueVolumeName, volume.podName, pod.UID, attachablePlugin)
+	if checkErr != nil {
+		return nil, checkErr
+	}
+	// If mount or symlink doesn't exist, volume reconstruction should be failed
+	if !isExist {
+		return nil, fmt.Errorf("Volume: %q is not mounted", uniqueVolumeName)
+	}
 
 	volumeMounter, newMounterErr := plugin.NewMounter(
 		volumeSpec,
@@ -501,16 +514,6 @@ func (rc *reconciler) reconstructVolume(volume podVolume) (*reconstructedVolume,
 			volume.podName,
 			pod.UID,
 			newMounterErr)
-	}
-
-	// Check existence of mount point for filesystem volume or symbolic link for block volume
-	isExist, checkErr := rc.operationExecutor.CheckVolumeExistenceOperation(volumeSpec, volumeMounter.GetPath(), volumeSpec.Name(), rc.mounter, uniqueVolumeName, volume.podName, pod.UID, attachablePlugin)
-	if checkErr != nil {
-		return nil, checkErr
-	}
-	// If mount or symlink doesn't exist, volume reconstruction should be failed
-	if !isExist {
-		return nil, fmt.Errorf("Volume: %q is not mounted", uniqueVolumeName)
 	}
 
 	// TODO: remove feature gate check after no longer needed
@@ -677,12 +680,12 @@ func getVolumesFromPodDir(podDir string) ([]podVolume, error) {
 				}
 				unescapePluginName := utilstrings.UnescapeQualifiedName(pluginName)
 				for _, volumeName := range volumePluginDirs {
-					volumePath := path.Join(volumePluginPath, volumeName)
-					klog.V(5).Infof("podName: %v, volume path from volume plugin directory: %v, ", podName, volumePath)
+					mountPath := path.Join(volumePluginPath, volumeName)
+					klog.V(5).Infof("podName: %v, mount path from volume plugin directory: %v, ", podName, mountPath)
 					volumes = append(volumes, podVolume{
 						podName:        volumetypes.UniquePodName(podName),
 						volumeSpecName: volumeName,
-						volumePath:     volumePath,
+						mountPath:      mountPath,
 						pluginName:     unescapePluginName,
 						volumeMode:     volumeMode,
 					})

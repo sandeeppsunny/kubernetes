@@ -38,7 +38,7 @@ func (r *Resource) String() string {
 	if err != nil {
 		return "<" + err.Error() + ">"
 	}
-	return strings.TrimSpace(string(bs)) + r.options.String()
+	return strings.TrimSpace(string(bs))
 }
 
 // DeepCopy returns a new copy of resource

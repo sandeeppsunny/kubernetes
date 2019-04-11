@@ -27,7 +27,9 @@ import (
 	"k8s.io/klog"
 )
 
-type statCache map[types.UID]*volumeStatCalculator
+// Map to PodVolumeStats pointers since the addresses for map values are not constant and can cause pain
+// if we need ever to get a pointer to one of the values (e.g. you can't)
+type Cache map[types.UID]*volumeStatCalculator
 
 // fsResourceAnalyzerInterface is for embedding fs functions into ResourceAnalyzer
 type fsResourceAnalyzerInterface interface {
@@ -36,7 +38,7 @@ type fsResourceAnalyzerInterface interface {
 
 // fsResourceAnalyzer provides stats about fs resource usage
 type fsResourceAnalyzer struct {
-	statsProvider     Provider
+	statsProvider     StatsProvider
 	calcPeriod        time.Duration
 	cachedVolumeStats atomic.Value
 	startOnce         sync.Once
@@ -45,12 +47,12 @@ type fsResourceAnalyzer struct {
 var _ fsResourceAnalyzerInterface = &fsResourceAnalyzer{}
 
 // newFsResourceAnalyzer returns a new fsResourceAnalyzer implementation
-func newFsResourceAnalyzer(statsProvider Provider, calcVolumePeriod time.Duration) *fsResourceAnalyzer {
+func newFsResourceAnalyzer(statsProvider StatsProvider, calcVolumePeriod time.Duration) *fsResourceAnalyzer {
 	r := &fsResourceAnalyzer{
 		statsProvider: statsProvider,
 		calcPeriod:    calcVolumePeriod,
 	}
-	r.cachedVolumeStats.Store(make(statCache))
+	r.cachedVolumeStats.Store(make(Cache))
 	return r
 }
 
@@ -68,8 +70,8 @@ func (s *fsResourceAnalyzer) Start() {
 
 // updateCachedPodVolumeStats calculates and caches the PodVolumeStats for every Pod known to the kubelet.
 func (s *fsResourceAnalyzer) updateCachedPodVolumeStats() {
-	oldCache := s.cachedVolumeStats.Load().(statCache)
-	newCache := make(statCache)
+	oldCache := s.cachedVolumeStats.Load().(Cache)
+	newCache := make(Cache)
 
 	// Copy existing entries to new map, creating/starting new entries for pods missing from the cache
 	for _, pod := range s.statsProvider.GetPods() {
@@ -94,12 +96,12 @@ func (s *fsResourceAnalyzer) updateCachedPodVolumeStats() {
 // GetPodVolumeStats returns the PodVolumeStats for a given pod.  Results are looked up from a cache that
 // is eagerly populated in the background, and never calculated on the fly.
 func (s *fsResourceAnalyzer) GetPodVolumeStats(uid types.UID) (PodVolumeStats, bool) {
-	cache := s.cachedVolumeStats.Load().(statCache)
-	statCalc, found := cache[uid]
-	if !found {
+	cache := s.cachedVolumeStats.Load().(Cache)
+	if statCalc, found := cache[uid]; !found {
 		// TODO: Differentiate between stats being empty
 		// See issue #20679
 		return PodVolumeStats{}, false
+	} else {
+		return statCalc.GetLatest()
 	}
-	return statCalc.GetLatest()
 }

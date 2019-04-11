@@ -53,10 +53,8 @@ type Options struct {
 	IsPrintingProto   bool     // output serialized devtools.buildozer.Output protos instead of human-readable strings
 }
 
-// NewOpts returns a new Options struct with some defaults set.
-func NewOpts() *Options {
-	return &Options{NumIO: 200, PreferEOLComments: true}
-}
+// Opts represents the options to be used by buildozer, and can be overriden before calling Buildozer.
+var Opts = Options{NumIO: 200, PreferEOLComments: true}
 
 // Usage is a user-overriden func to print the program usage.
 var Usage = func() {}
@@ -77,7 +75,7 @@ type CmdEnvironment struct {
 
 // The cmdXXX functions implement the various commands.
 
-func cmdAdd(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdAdd(env CmdEnvironment) (*build.File, error) {
 	attr := env.Args[0]
 	for _, val := range env.Args[1:] {
 		if IsIntList(attr) {
@@ -90,14 +88,14 @@ func cmdAdd(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return env.File, nil
 }
 
-func cmdComment(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdComment(env CmdEnvironment) (*build.File, error) {
 	// The comment string is always the last argument in the list.
 	str := env.Args[len(env.Args)-1]
 	str = strings.Replace(str, "\\n", "\n", -1)
 	// Multiline comments should go on a separate line.
-	fullLine := !opts.PreferEOLComments || strings.Contains(str, "\n")
+	fullLine := !Opts.PreferEOLComments || strings.Contains(str, "\n")
 	str = strings.Replace("# "+str, "\n", "\n# ", -1)
-	comment := []build.Comment{{Token: str}}
+	comment := []build.Comment{build.Comment{Token: str}}
 
 	// The comment might be attached to a rule, an attribute, or a value in a list,
 	// depending on how many arguments are passed.
@@ -141,7 +139,7 @@ func commentsText(comments []build.Comment) string {
 	return strings.Replace(strings.Join(segments, " "), "\n", " ", -1)
 }
 
-func cmdPrintComment(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdPrintComment(env CmdEnvironment) (*build.File, error) {
 	attrError := func() error {
 		return fmt.Errorf("rule \"//%s:%s\" has no attribute \"%s\"", env.Pkg, env.Rule.Name(), env.Args[0])
 	}
@@ -149,7 +147,7 @@ func cmdPrintComment(opts *Options, env CmdEnvironment) (*build.File, error) {
 	switch len(env.Args) {
 	case 0: // Print rule comment.
 		env.output.Fields = []*apipb.Output_Record_Field{
-			{Value: &apipb.Output_Record_Field_Text{commentsText(env.Rule.Call.Comments.Before)}},
+			&apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{commentsText(env.Rule.Call.Comments.Before)}},
 		}
 	case 1: // Print attribute comment.
 		attr := env.Rule.AttrDefn(env.Args[0])
@@ -158,7 +156,7 @@ func cmdPrintComment(opts *Options, env CmdEnvironment) (*build.File, error) {
 		}
 		comments := append(attr.Before, attr.Suffix...)
 		env.output.Fields = []*apipb.Output_Record_Field{
-			{Value: &apipb.Output_Record_Field_Text{commentsText(comments)}},
+			&apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{commentsText(comments)}},
 		}
 	case 2: // Print comment of a specific value in a list.
 		attr := env.Rule.Attr(env.Args[0])
@@ -172,7 +170,7 @@ func cmdPrintComment(opts *Options, env CmdEnvironment) (*build.File, error) {
 		}
 		comments := append(expr.Comments.Before, expr.Comments.Suffix...)
 		env.output.Fields = []*apipb.Output_Record_Field{
-			{Value: &apipb.Output_Record_Field_Text{commentsText(comments)}},
+			&apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{commentsText(comments)}},
 		}
 	default:
 		panic("cmdPrintComment")
@@ -180,11 +178,11 @@ func cmdPrintComment(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return nil, nil
 }
 
-func cmdDelete(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdDelete(env CmdEnvironment) (*build.File, error) {
 	return DeleteRule(env.File, env.Rule), nil
 }
 
-func cmdMove(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdMove(env CmdEnvironment) (*build.File, error) {
 	oldAttr := env.Args[0]
 	newAttr := env.Args[1]
 	if len(env.Args) == 3 && env.Args[2] == "*" {
@@ -206,7 +204,7 @@ func cmdMove(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return nil, nil
 }
 
-func cmdNew(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdNew(env CmdEnvironment) (*build.File, error) {
 	kind := env.Args[0]
 	name := env.Args[1]
 	addAtEOF, insertionIndex, err := findInsertionIndex(env)
@@ -219,7 +217,7 @@ func cmdNew(opts *Options, env CmdEnvironment) (*build.File, error) {
 	}
 
 	call := &build.CallExpr{X: &build.LiteralExpr{Token: kind}}
-	rule := &build.Rule{call, ""}
+	rule := &build.Rule{Call: call}
 	rule.SetAttr("name", &build.StringExpr{Value: name})
 
 	if addAtEOF {
@@ -237,7 +235,7 @@ func findInsertionIndex(env CmdEnvironment) (bool, int, error) {
 	}
 
 	relativeToRuleName := env.Args[3]
-	ruleIdx, _ := IndexOfRuleByName(env.File, relativeToRuleName)
+	ruleIdx := IndexOfRuleByName(env.File, relativeToRuleName)
 	if ruleIdx == -1 {
 		return true, 0, nil
 	}
@@ -252,12 +250,12 @@ func findInsertionIndex(env CmdEnvironment) (bool, int, error) {
 	}
 }
 
-func cmdNewLoad(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdNewLoad(env CmdEnvironment) (*build.File, error) {
 	env.File.Stmt = InsertLoad(env.File.Stmt, env.Args)
 	return env.File, nil
 }
 
-func cmdPrint(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdPrint(env CmdEnvironment) (*build.File, error) {
 	format := env.Args
 	if len(format) == 0 {
 		format = []string{"name", "kind"}
@@ -268,10 +266,8 @@ func cmdPrint(opts *Options, env CmdEnvironment) (*build.File, error) {
 		value := env.Rule.Attr(str)
 		if str == "kind" {
 			fields[i] = &apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{env.Rule.Kind()}}
-		} else if str == "name" {
-			fields[i] = &apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{env.Rule.Name()}}
 		} else if str == "label" {
-			if env.Rule.Name() != "" {
+			if env.Rule.Attr("name") != nil {
 				fields[i] = &apipb.Output_Record_Field{Value: &apipb.Output_Record_Field_Text{fmt.Sprintf("//%s:%s", env.Pkg, env.Rule.Name())}}
 			} else {
 				return nil, nil
@@ -314,7 +310,7 @@ func attrKeysForPattern(rule *build.Rule, pattern string) []string {
 	return []string{pattern}
 }
 
-func cmdRemove(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdRemove(env CmdEnvironment) (*build.File, error) {
 	if len(env.Args) == 1 { // Remove the attribute
 		if env.Rule.DelAttr(env.Args[0]) != nil {
 			return env.File, nil
@@ -334,7 +330,7 @@ func cmdRemove(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return nil, nil
 }
 
-func cmdRename(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdRename(env CmdEnvironment) (*build.File, error) {
 	oldAttr := env.Args[0]
 	newAttr := env.Args[1]
 	if err := RenameAttribute(env.Rule, oldAttr, newAttr); err != nil {
@@ -343,7 +339,7 @@ func cmdRename(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return env.File, nil
 }
 
-func cmdReplace(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdReplace(env CmdEnvironment) (*build.File, error) {
 	oldV := env.Args[1]
 	newV := env.Args[2]
 	for _, key := range attrKeysForPattern(env.Rule, env.Args[0]) {
@@ -359,27 +355,7 @@ func cmdReplace(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return env.File, nil
 }
 
-func cmdSubstitute(opts *Options, env CmdEnvironment) (*build.File, error) {
-	oldRegexp, err := regexp.Compile(env.Args[1])
-	if err != nil {
-		return nil, err
-	}
-	newTemplate := env.Args[2]
-	for _, key := range attrKeysForPattern(env.Rule, env.Args[0]) {
-		attr := env.Rule.Attr(key)
-		e, ok := attr.(*build.StringExpr)
-		if !ok {
-			ListSubstitute(attr, oldRegexp, newTemplate)
-			continue
-		}
-		if newValue, ok := stringSubstitute(e.Value, oldRegexp, newTemplate); ok {
-			env.Rule.SetAttr(key, getAttrValueExpr(key, []string{newValue}))
-		}
-	}
-	return env.File, nil
-}
-
-func cmdSet(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdSet(env CmdEnvironment) (*build.File, error) {
 	attr := env.Args[0]
 	args := env.Args[1:]
 	if attr == "kind" {
@@ -390,7 +366,7 @@ func cmdSet(opts *Options, env CmdEnvironment) (*build.File, error) {
 	return env.File, nil
 }
 
-func cmdSetIfAbsent(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdSetIfAbsent(env CmdEnvironment) (*build.File, error) {
 	attr := env.Args[0]
 	args := env.Args[1:]
 	if attr == "kind" {
@@ -425,14 +401,14 @@ func getAttrValueExpr(attr string, args []string) build.Expr {
 	}
 }
 
-func cmdCopy(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdCopy(env CmdEnvironment) (*build.File, error) {
 	attrName := env.Args[0]
 	from := env.Args[1]
 
 	return copyAttributeBetweenRules(env, attrName, from)
 }
 
-func cmdCopyNoOverwrite(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdCopyNoOverwrite(env CmdEnvironment) (*build.File, error) {
 	attrName := env.Args[0]
 	from := env.Args[1]
 
@@ -462,7 +438,7 @@ func copyAttributeBetweenRules(env CmdEnvironment, attrName string, from string)
 	return env.File, nil
 }
 
-func cmdFix(opts *Options, env CmdEnvironment) (*build.File, error) {
+func cmdFix(env CmdEnvironment) (*build.File, error) {
 	// Fix the whole file
 	if env.Rule.Kind() == "package" {
 		return FixFile(env.File, env.Pkg, env.Args), nil
@@ -473,7 +449,7 @@ func cmdFix(opts *Options, env CmdEnvironment) (*build.File, error) {
 
 // CommandInfo provides a command function and info on incoming arguments.
 type CommandInfo struct {
-	Fn       func(*Options, CmdEnvironment) (*build.File, error)
+	Fn       func(CmdEnvironment) (*build.File, error)
 	MinArg   int
 	MaxArg   int
 	Template string
@@ -494,7 +470,6 @@ var AllCommands = map[string]CommandInfo{
 	"remove":            {cmdRemove, 1, -1, "<attr> <value(s)>"},
 	"rename":            {cmdRename, 2, 2, "<old_attr> <new_attr>"},
 	"replace":           {cmdReplace, 3, 3, "<attr> <old_value> <new_value>"},
-	"substitute":        {cmdSubstitute, 3, 3, "<attr> <old_regexp> <new_template>"},
 	"set":               {cmdSet, 2, -1, "<attr> <value(s)>"},
 	"set_if_absent":     {cmdSetIfAbsent, 2, -1, "<attr> <value(s)>"},
 	"copy":              {cmdCopy, 2, 2, "<attr> <from_rule>"},
@@ -525,13 +500,13 @@ func expandTargets(f *build.File, rule string) ([]*build.Rule, error) {
 	return nil, fmt.Errorf("rule '%s' not found", rule)
 }
 
-func filterRules(opts *Options, rules []*build.Rule) (result []*build.Rule) {
-	if len(opts.FilterRuleTypes) == 0 {
+func filterRules(rules []*build.Rule) (result []*build.Rule) {
+	if len(Opts.FilterRuleTypes) == 0 {
 		return rules
 	}
 	for _, rule := range rules {
 		acceptableType := false
-		for _, filterType := range opts.FilterRuleTypes {
+		for _, filterType := range Opts.FilterRuleTypes {
 			if rule.Kind() == filterType {
 				acceptableType = true
 				break
@@ -659,7 +634,7 @@ var buildFileNamesSet = map[string]bool{
 
 // rewrite parses the BUILD file for the given file, transforms the AST,
 // and write the changes back in the file (or on stdout).
-func rewrite(opts *Options, commandsForFile commandsForFile) *rewriteResult {
+func rewrite(commandsForFile commandsForFile) *rewriteResult {
 	name := commandsForFile.file
 	var data []byte
 	var err error
@@ -701,7 +676,7 @@ func rewrite(opts *Options, commandsForFile commandsForFile) *rewriteResult {
 	}
 
 	vars := map[string]*build.BinaryExpr{}
-	if opts.EditVariables {
+	if Opts.EditVariables {
 		vars = getGlobalVariables(f.Stmt)
 	}
 	var errs []error
@@ -709,7 +684,7 @@ func rewrite(opts *Options, commandsForFile commandsForFile) *rewriteResult {
 	for _, commands := range commandsForFile.commands {
 		target := commands.target
 		commands := commands.commands
-		_, absPkg, rule := InterpretLabelForWorkspaceLocation(opts.RootDir, target)
+		_, absPkg, rule := InterpretLabelForWorkspaceLocation(Opts.RootDir, target)
 		_, pkg, _ := ParseLabel(target)
 		if pkg == stdinPackageName { // Special-case: This is already absolute
 			absPkg = stdinPackageName
@@ -719,23 +694,23 @@ func rewrite(opts *Options, commandsForFile commandsForFile) *rewriteResult {
 		if err != nil {
 			cerr := commandError(commands, target, err)
 			errs = append(errs, cerr)
-			if !opts.KeepGoing {
+			if !Opts.KeepGoing {
 				return &rewriteResult{file: name, errs: errs, records: records}
 
 			}
 		}
-		targets = filterRules(opts, targets)
+		targets = filterRules(targets)
 		for _, cmd := range commands {
 			for _, r := range targets {
 				cmdInfo := AllCommands[cmd.tokens[0]]
 				record := &apipb.Output_Record{}
-				newf, err := cmdInfo.Fn(opts, CmdEnvironment{f, r, vars, absPkg, cmd.tokens[1:], record})
+				newf, err := cmdInfo.Fn(CmdEnvironment{f, r, vars, absPkg, cmd.tokens[1:], record})
 				if len(record.Fields) != 0 {
 					records = append(records, record)
 				}
 				if err != nil {
 					cerr := commandError([]command{cmd}, target, err)
-					if opts.KeepGoing {
+					if Opts.KeepGoing {
 						errs = append(errs, cerr)
 					} else {
 						return &rewriteResult{file: name, errs: []error{cerr}, records: records}
@@ -752,12 +727,12 @@ func rewrite(opts *Options, commandsForFile commandsForFile) *rewriteResult {
 		return &rewriteResult{file: name, errs: errs, records: records}
 	}
 	f = RemoveEmptyPackage(f)
-	ndata, err := runBuildifier(opts, f)
+	ndata, err := runBuildifier(f)
 	if err != nil {
 		return &rewriteResult{file: name, errs: []error{fmt.Errorf("running buildifier: %v", err)}, records: records}
 	}
 
-	if opts.Stdout || name == stdinPackageName {
+	if Opts.Stdout || name == stdinPackageName {
 		os.Stdout.Write(ndata)
 		return &rewriteResult{file: name, errs: errs, records: records}
 	}
@@ -785,15 +760,15 @@ var EditFile = func(fi os.FileInfo, name string) error {
 }
 
 // runBuildifier formats the build file f.
-// Runs opts.Buildifier if it's non-empty, otherwise uses built-in formatter.
-// opts.Buildifier is useful to force consistency with other tools that call Buildifier.
-func runBuildifier(opts *Options, f *build.File) ([]byte, error) {
-	if opts.Buildifier == "" {
+// Runs Opts.Buildifier if it's non-empty, otherwise uses built-in formatter.
+// Opts.Buildifier is useful to force consistency with other tools that call Buildifier.
+func runBuildifier(f *build.File) ([]byte, error) {
+	if Opts.Buildifier == "" {
 		build.Rewrite(f, nil)
 		return build.Format(f), nil
 	}
 
-	cmd := exec.Command(opts.Buildifier)
+	cmd := exec.Command(Opts.Buildifier)
 	data := build.Format(f)
 	cmd.Stdin = bytes.NewBuffer(data)
 	stdout := bytes.NewBuffer(nil)
@@ -812,9 +787,9 @@ func runBuildifier(opts *Options, f *build.File) ([]byte, error) {
 
 // Given a target, whose package may contain a trailing "/...", returns all
 // extisting BUILD file paths which match the package.
-func targetExpressionToBuildFiles(opts *Options, target string) []string {
-	file, _, _ := InterpretLabelForWorkspaceLocation(opts.RootDir, target)
-	if opts.RootDir == "" {
+func targetExpressionToBuildFiles(target string) []string {
+	file, _, _ := InterpretLabelForWorkspaceLocation(Opts.RootDir, target)
+	if Opts.RootDir == "" {
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
 			fmt.Printf("Cannot make path absolute: %s\n", err.Error())
@@ -852,7 +827,7 @@ func targetExpressionToBuildFiles(opts *Options, target string) []string {
 
 // appendCommands adds the given commands to be applied to each of the given targets
 // via the commandMap.
-func appendCommands(opts *Options, commandMap map[string][]commandsForTarget, args []string) {
+func appendCommands(commandMap map[string][]commandsForTarget, args []string) {
 	commands, targets := parseCommands(args)
 	for _, target := range targets {
 		if strings.HasSuffix(target, "/BUILD") {
@@ -863,7 +838,7 @@ func appendCommands(opts *Options, commandMap map[string][]commandsForTarget, ar
 		if pkg == stdinPackageName {
 			buildFiles = []string{stdinPackageName}
 		} else {
-			buildFiles = targetExpressionToBuildFiles(opts, target)
+			buildFiles = targetExpressionToBuildFiles(target)
 		}
 
 		for _, file := range buildFiles {
@@ -872,12 +847,12 @@ func appendCommands(opts *Options, commandMap map[string][]commandsForTarget, ar
 	}
 }
 
-func appendCommandsFromFile(opts *Options, commandsByFile map[string][]commandsForTarget, fileName string) {
+func appendCommandsFromFile(commandsByFile map[string][]commandsForTarget, fileName string) {
 	var reader io.Reader
-	if opts.CommandsFile == stdinPackageName {
+	if Opts.CommandsFile == stdinPackageName {
 		reader = os.Stdin
 	} else {
-		rc := file.OpenReadFile(opts.CommandsFile)
+		rc := file.OpenReadFile(Opts.CommandsFile)
 		reader = rc
 		defer rc.Close()
 	}
@@ -888,7 +863,7 @@ func appendCommandsFromFile(opts *Options, commandsByFile map[string][]commandsF
 			continue
 		}
 		args := strings.Split(line, "|")
-		appendCommands(opts, commandsByFile, args)
+		appendCommands(commandsByFile, args)
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error while reading commands file: %v", scanner.Err())
@@ -930,28 +905,28 @@ func printRecord(writer io.Writer, record *apipb.Output_Record) {
 }
 
 // Buildozer loops over all arguments on the command line fixing BUILD files.
-func Buildozer(opts *Options, args []string) int {
+func Buildozer(args []string) int {
 	commandsByFile := make(map[string][]commandsForTarget)
-	if opts.CommandsFile != "" {
-		appendCommandsFromFile(opts, commandsByFile, opts.CommandsFile)
+	if Opts.CommandsFile != "" {
+		appendCommandsFromFile(commandsByFile, Opts.CommandsFile)
 	} else {
 		if len(args) == 0 {
 			Usage()
 		}
-		appendCommands(opts, commandsByFile, args)
+		appendCommands(commandsByFile, args)
 	}
 
 	numFiles := len(commandsByFile)
-	if opts.Parallelism > 0 {
-		runtime.GOMAXPROCS(opts.Parallelism)
+	if Opts.Parallelism > 0 {
+		runtime.GOMAXPROCS(Opts.Parallelism)
 	}
 	results := make(chan *rewriteResult, numFiles)
 	data := make(chan commandsForFile)
 
-	for i := 0; i < opts.NumIO; i++ {
+	for i := 0; i < Opts.NumIO; i++ {
 		go func(results chan *rewriteResult, data chan commandsForFile) {
 			for commandsForFile := range data {
-				results <- rewrite(opts, commandsForFile)
+				results <- rewrite(commandsForFile)
 			}
 		}(results, data)
 	}
@@ -971,7 +946,7 @@ func Buildozer(opts *Options, args []string) int {
 		for _, err := range fileResults.errs {
 			fmt.Fprintf(os.Stderr, "%s: %s\n", fileResults.file, err)
 		}
-		if fileResults.modified && !opts.Quiet {
+		if fileResults.modified && !Opts.Quiet {
 			fmt.Fprintf(os.Stderr, "fixed %s\n", fileResults.file)
 		}
 		if fileResults.records != nil {
@@ -979,7 +954,7 @@ func Buildozer(opts *Options, args []string) int {
 		}
 	}
 
-	if opts.IsPrintingProto {
+	if Opts.IsPrintingProto {
 		data, err := proto.Marshal(&apipb.Output{Records: records})
 		if err != nil {
 			log.Fatal("marshaling error: ", err)
@@ -994,7 +969,7 @@ func Buildozer(opts *Options, args []string) int {
 	if hasErrors {
 		return 2
 	}
-	if !fileModified && !opts.Stdout {
+	if !fileModified && !Opts.Stdout {
 		return 3
 	}
 	return 0

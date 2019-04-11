@@ -18,48 +18,33 @@ distributed under the License is distributed on an "AS IS" BASIS,
 
 package build
 
-import (
-	"strings"
-	"path/filepath"
-)
+import "strings"
 
 // A Rule represents a single BUILD rule.
 type Rule struct {
-	Call         *CallExpr
-	ImplicitName string // The name which should be used if the name attribute is not set. See the comment on File.implicitRuleName.
-}
-
-func (f *File) Rule(call *CallExpr) *Rule {
-	r := &Rule{call, ""}
-	if r.AttrString("name") == "" {
-		r.ImplicitName = f.implicitRuleName()
-	}
-	return r
+	Call *CallExpr
 }
 
 // Rules returns the rules in the file of the given kind (such as "go_library").
 // If kind == "", Rules returns all rules in the file.
 func (f *File) Rules(kind string) []*Rule {
 	var all []*Rule
-
 	for _, stmt := range f.Stmt {
 		call, ok := stmt.(*CallExpr)
 		if !ok {
 			continue
 		}
-		rule := f.Rule(call)
+		rule := &Rule{call}
 		if kind != "" && rule.Kind() != kind {
 			continue
 		}
 		all = append(all, rule)
 	}
-
 	return all
 }
 
 // RuleAt returns the rule in the file that starts at the specified line, or null if no such rule.
 func (f *File) RuleAt(linenum int) *Rule {
-
 	for _, stmt := range f.Stmt {
 		call, ok := stmt.(*CallExpr)
 		if !ok {
@@ -67,7 +52,7 @@ func (f *File) RuleAt(linenum int) *Rule {
 		}
 		start, end := call.X.Span()
 		if start.Line <= linenum && linenum <= end.Line {
-			return f.Rule(call)
+			return &Rule{call}
 		}
 	}
 	return nil
@@ -80,9 +65,9 @@ func (f *File) DelRules(kind, name string) int {
 	var i int
 	for _, stmt := range f.Stmt {
 		if call, ok := stmt.(*CallExpr); ok {
-			r := f.Rule(call)
+			r := &Rule{call}
 			if (kind == "" || r.Kind() == kind) &&
-				(name == "" || r.Name() == name) {
+				(name == "" || r.AttrString("name") == name) {
 				continue
 			}
 		}
@@ -92,42 +77,6 @@ func (f *File) DelRules(kind, name string) int {
 	n := len(f.Stmt) - i
 	f.Stmt = f.Stmt[:i]
 	return n
-}
-
-// If a build file contains exactly one unnamed rule, and no rules in the file explicitly have the
-// same name as the name of the directory the build file is in, we treat the unnamed rule as if it
-// had the name of the directory containing the BUILD file.
-// This is following a convention used in the Pants build system to cut down on boilerplate.
-func (f *File) implicitRuleName() string {
-	// We disallow empty names in the top-level BUILD files.
-	dir := filepath.Dir(f.Path)
-	if dir == "." {
-		return ""
-	}
-	sawAnonymousRule := false
-	possibleImplicitName := filepath.Base(dir)
-
-	for _, stmt := range f.Stmt {
-		call, ok := stmt.(*CallExpr)
-		if !ok {
-			continue
-		}
-		temp := &Rule{call, ""}
-		if temp.AttrString("name") == possibleImplicitName {
-			// A target explicitly has the name of the dir, so no implicit targets are allowed.
-			return ""
-		}
-		if temp.Kind() != "" && temp.AttrString("name") == "" {
-			if sawAnonymousRule {
-				return ""
-			}
-			sawAnonymousRule = true
-		}
-	}
-	if sawAnonymousRule {
-		return possibleImplicitName
-	}
-	return ""
 }
 
 // Kind returns the rule's kind (such as "go_library").
@@ -169,13 +118,9 @@ func (r *Rule) SetKind(kind string) {
 }
 
 // Name returns the rule's target name.
-// If the rule has no explicit target name, Name returns the implicit name if there is one, else the empty string.
+// If the rule has no target name, Name returns the empty string.
 func (r *Rule) Name() string {
-	explicitName := r.AttrString("name")
-	if explicitName == "" {
-		return r.ImplicitName
-	}
-	return explicitName
+	return r.AttrString("name")
 }
 
 // AttrKeys returns the keys of all the rule's attributes.

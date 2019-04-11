@@ -60,7 +60,7 @@ func networkingIPerfTest(isIPv6 bool) {
 		expectedBandwidth := int(float64(maxBandwidthBits) / float64(totalPods))
 		Expect(totalPods).NotTo(Equal(0))
 		appName := "iperf-e2e"
-		_, err := f.CreateServiceForSimpleAppWithPods(
+		err, _ := f.CreateServiceForSimpleAppWithPods(
 			8001,
 			8002,
 			appName,

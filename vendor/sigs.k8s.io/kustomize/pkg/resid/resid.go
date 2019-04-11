@@ -22,30 +22,23 @@ import (
 	"sigs.k8s.io/kustomize/pkg/gvk"
 )
 
-// ResId is an immutable identifier of a k8s resource object.
+// ResId conflates GroupVersionKind with a textual name to uniquely identify a kubernetes resource (object).
 type ResId struct {
 	// Gvk of the resource.
 	gvKind gvk.Gvk
-
-	// name of the resource before transformation.
+	// original name of the resource before transformation.
 	name string
-
-	// namePrefix of the resource.
-	// An untransformed resource has no prefix.
-	// A fully transformed resource has an arbitrary
-	// number of prefixes concatenated together.
+	// namePrefix of the resource
+	// an untransformed resource has no prefix, fully transformed resource has an arbitrary number of prefixes
+	// concatenated together.
 	prefix string
-
-	// nameSuffix of the resource.
-	// An untransformed resource has no suffix.
-	// A fully transformed resource has an arbitrary
-	// number of suffixes concatenated together.
+	// nameSuffix of the resource
+	// an untransformed resource has no suffix, fully transformed resource has an arbitrary number of suffixes
+	// concatenated together.
 	suffix string
-
-	// Namespace the resource belongs to.
-	// An untransformed resource has no namespace.
-	// A fully transformed resource has the namespace
-	// from the top most overlay.
+	// namespace the resource belongs to
+	// an untransformed resource has no namespace, fully transformed resource has the namespace from
+	// the top most overlay
 	namespace string
 }
 
@@ -115,16 +108,10 @@ func (n ResId) GvknString() string {
 	return n.gvKind.String() + separator + n.name
 }
 
-// GvknEquals returns true if the other id matches
-// Group/Version/Kind/name.
+// GvknEquals return if two ResId have the same Group/Version/Kind and name
+// The comparison excludes prefix and suffix
 func (n ResId) GvknEquals(id ResId) bool {
-	return n.name == id.name && n.gvKind.Equals(id.gvKind)
-}
-
-// NsGvknEquals returns true if the other id matches
-// namespace/Group/Version/Kind/name.
-func (n ResId) NsGvknEquals(id ResId) bool {
-	return n.namespace == id.namespace && n.GvknEquals(id)
+	return n.gvKind.Equals(id.gvKind) && n.name == id.name
 }
 
 // Gvk returns Group/Version/Kind of the resource.

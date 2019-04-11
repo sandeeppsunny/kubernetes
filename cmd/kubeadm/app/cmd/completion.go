@@ -117,9 +117,10 @@ func NewCmdCompletion(out io.Writer, boilerPlate string) *cobra.Command {
 
 // RunCompletion checks given arguments and executes command
 func RunCompletion(out io.Writer, boilerPlate string, cmd *cobra.Command, args []string) error {
-	if length := len(args); length == 0 {
+	if len(args) == 0 {
 		return errors.New("shell not specified")
-	} else if length > 1 {
+	}
+	if len(args) > 1 {
 		return errors.New("too many arguments. expected only the shell type")
 	}
 	run, found := completionShells[args[0]]

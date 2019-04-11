@@ -23,6 +23,8 @@ package nodelifecycle
 
 import (
 	"fmt"
+	"hash/fnv"
+	"io"
 	"sync"
 	"time"
 
@@ -50,11 +52,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/client-go/util/workqueue"
+	v1node "k8s.io/kubernetes/pkg/api/v1/node"
 	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/controller/nodelifecycle/scheduler"
 	nodeutil "k8s.io/kubernetes/pkg/controller/util/node"
 	"k8s.io/kubernetes/pkg/features"
-	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/pkg/util/metrics"
 	utilnode "k8s.io/kubernetes/pkg/util/node"
@@ -129,37 +131,6 @@ const (
 	retrySleepTime = 20 * time.Millisecond
 )
 
-// labelReconcileInfo lists Node labels to reconcile, and how to reconcile them.
-// primaryKey and secondaryKey are keys of labels to reconcile.
-//   - If both keys exist, but their values don't match. Use the value from the
-//   primaryKey as the source of truth to reconcile.
-//   - If ensureSecondaryExists is true, and the secondaryKey does not
-//   exist, secondaryKey will be added with the value of the primaryKey.
-var labelReconcileInfo = []struct {
-	primaryKey            string
-	secondaryKey          string
-	ensureSecondaryExists bool
-}{
-	{
-		// Reconcile the beta and the stable OS label using the beta label as
-		// the source of truth.
-		// TODO(#73084): switch to using the stable label as the source of
-		// truth in v1.18.
-		primaryKey:            kubeletapis.LabelOS,
-		secondaryKey:          v1.LabelOSStable,
-		ensureSecondaryExists: true,
-	},
-	{
-		// Reconcile the beta and the stable arch label using the beta label as
-		// the source of truth.
-		// TODO(#73084): switch to using the stable label as the source of
-		// truth in v1.18.
-		primaryKey:            kubeletapis.LabelArch,
-		secondaryKey:          v1.LabelArchStable,
-		ensureSecondaryExists: true,
-	},
-}
-
 type nodeHealthData struct {
 	probeTimestamp           metav1.Time
 	readyTransitionTimestamp metav1.Time
@@ -175,7 +146,7 @@ type Controller struct {
 	kubeClient        clientset.Interface
 
 	// This timestamp is to be used instead of LastProbeTime stored in Condition. We do this
-	// to avoid the problem with time skew across the cluster.
+	// to aviod the problem with time skew across the cluster.
 	now func() metav1.Time
 
 	enterPartialDisruptionFunc func(nodeNum int) float32
@@ -385,20 +356,18 @@ func NewNodeLifecycleController(
 		})
 	}
 
-	klog.Infof("Controller will reconcile labels.")
-	nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
-			nc.nodeUpdateQueue.Add(node.Name)
-			return nil
-		}),
-		UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
-			nc.nodeUpdateQueue.Add(newNode.Name)
-			return nil
-		}),
-	})
-
 	if nc.taintNodeByCondition {
 		klog.Infof("Controller will taint node by condition.")
+		nodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: nodeutil.CreateAddNodeHandler(func(node *v1.Node) error {
+				nc.nodeUpdateQueue.Add(node.Name)
+				return nil
+			}),
+			UpdateFunc: nodeutil.CreateUpdateNodeHandler(func(_, newNode *v1.Node) error {
+				nc.nodeUpdateQueue.Add(newNode.Name)
+				return nil
+			}),
+		})
 	}
 
 	nc.leaseLister = leaseInformer.Lister()
@@ -433,16 +402,18 @@ func (nc *Controller) Run(stopCh <-chan struct{}) {
 		go nc.taintManager.Run(stopCh)
 	}
 
-	// Close node update queue to cleanup go routine.
-	defer nc.nodeUpdateQueue.ShutDown()
+	if nc.taintNodeByCondition {
+		// Close node update queue to cleanup go routine.
+		defer nc.nodeUpdateQueue.ShutDown()
 
-	// Start workers to reconcile labels and/or update NoSchedule taint for nodes.
-	for i := 0; i < scheduler.UpdateWorkerSize; i++ {
-		// Thanks to "workqueue", each worker just need to get item from queue, because
-		// the item is flagged when got from queue: if new event come, the new item will
-		// be re-queued until "Done", so no more than one worker handle the same item and
-		// no event missed.
-		go wait.Until(nc.doNodeProcessingPassWorker, time.Second, stopCh)
+		// Start workers to update NoSchedule taint for nodes.
+		for i := 0; i < scheduler.UpdateWorkerSize; i++ {
+			// Thanks to "workqueue", each worker just need to get item from queue, because
+			// the item is flagged when got from queue: if new event come, the new item will
+			// be re-queued until "Done", so no more than one worker handle the same item and
+			// no event missed.
+			go wait.Until(nc.doNoScheduleTaintingPassWorker, time.Second, stopCh)
+		}
 	}
 
 	if nc.useTaintBasedEvictions {
@@ -466,7 +437,7 @@ func (nc *Controller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (nc *Controller) doNodeProcessingPassWorker() {
+func (nc *Controller) doNoScheduleTaintingPassWorker() {
 	for {
 		obj, shutdown := nc.nodeUpdateQueue.Get()
 		// "nodeUpdateQueue" will be shutdown when "stopCh" closed;
@@ -475,17 +446,10 @@ func (nc *Controller) doNodeProcessingPassWorker() {
 			return
 		}
 		nodeName := obj.(string)
-		if nc.taintNodeByCondition {
-			if err := nc.doNoScheduleTaintingPass(nodeName); err != nil {
-				klog.Errorf("Failed to taint NoSchedule on node <%s>, requeue it: %v", nodeName, err)
-				// TODO(k82cn): Add nodeName back to the queue
-			}
-		}
-		// TODO: re-evaluate whether there are any labels that need to be
-		// reconcile in 1.19. Remove this function if it's no longer necessary.
-		if err := nc.reconcileNodeLabels(nodeName); err != nil {
-			klog.Errorf("Failed to reconcile labels for node <%s>, requeue it: %v", nodeName, err)
-			// TODO(yujuhong): Add nodeName back to the queue
+
+		if err := nc.doNoScheduleTaintingPass(nodeName); err != nil {
+			// TODO (k82cn): Add nodeName back to the queue.
+			klog.Errorf("Failed to taint NoSchedule on node <%s>, requeue it: %v", nodeName, err)
 		}
 		nc.nodeUpdateQueue.Done(nodeName)
 	}
@@ -561,7 +525,7 @@ func (nc *Controller) doNoExecuteTaintingPass() {
 				// retry in 50 millisecond
 				return false, 50 * time.Millisecond
 			}
-			_, condition := nodeutil.GetNodeCondition(&node.Status, v1.NodeReady)
+			_, condition := v1node.GetNodeCondition(&node.Status, v1.NodeReady)
 			// Because we want to mimic NodeStatus.Condition["Ready"] we make "unreachable" and "not ready" taints mutually exclusive.
 			taintToAdd := v1.Taint{}
 			oppositeTaint := v1.Taint{}
@@ -778,7 +742,7 @@ func (nc *Controller) tryUpdateNodeHealth(node *v1.Node) (time.Duration, v1.Node
 	var err error
 	var gracePeriod time.Duration
 	var observedReadyCondition v1.NodeCondition
-	_, currentReadyCondition := nodeutil.GetNodeCondition(&node.Status, v1.NodeReady)
+	_, currentReadyCondition := v1node.GetNodeCondition(&node.Status, v1.NodeReady)
 	if currentReadyCondition == nil {
 		// If ready condition is nil, then kubelet (or nodecontroller) never posted node status.
 		// A fake ready condition is created, where LastHeartbeatTime and LastTransitionTime is set
@@ -823,10 +787,10 @@ func (nc *Controller) tryUpdateNodeHealth(node *v1.Node) (time.Duration, v1.Node
 	var savedCondition *v1.NodeCondition
 	var savedLease *coordv1beta1.Lease
 	if found {
-		_, savedCondition = nodeutil.GetNodeCondition(savedNodeHealth.status, v1.NodeReady)
+		_, savedCondition = v1node.GetNodeCondition(savedNodeHealth.status, v1.NodeReady)
 		savedLease = savedNodeHealth.lease
 	}
-	_, observedCondition := nodeutil.GetNodeCondition(&node.Status, v1.NodeReady)
+	_, observedCondition := v1node.GetNodeCondition(&node.Status, v1.NodeReady)
 	if !found {
 		klog.Warningf("Missing timestamp for Node %s. Assuming now as a timestamp.", node.Name)
 		savedNodeHealth = &nodeHealthData{
@@ -921,7 +885,7 @@ func (nc *Controller) tryUpdateNodeHealth(node *v1.Node) (time.Duration, v1.Node
 
 		nowTimestamp := nc.now()
 		for _, nodeConditionType := range remainingNodeConditionTypes {
-			_, currentCondition := nodeutil.GetNodeCondition(&node.Status, nodeConditionType)
+			_, currentCondition := v1node.GetNodeCondition(&node.Status, nodeConditionType)
 			if currentCondition == nil {
 				klog.V(2).Infof("Condition %v of node %v was never updated by kubelet", nodeConditionType, node.Name)
 				node.Status.Conditions = append(node.Status.Conditions, v1.NodeCondition{
@@ -944,7 +908,7 @@ func (nc *Controller) tryUpdateNodeHealth(node *v1.Node) (time.Duration, v1.Node
 			}
 		}
 
-		_, currentCondition := nodeutil.GetNodeCondition(&node.Status, v1.NodeReady)
+		_, currentCondition := v1node.GetNodeCondition(&node.Status, v1.NodeReady)
 		if !apiequality.Semantic.DeepEqual(currentCondition, &observedReadyCondition) {
 			if _, err = nc.kubeClient.CoreV1().Nodes().UpdateStatus(node); err != nil {
 				klog.Errorf("Error updating node %s: %v", node.Name, err)
@@ -1228,49 +1192,8 @@ func (nc *Controller) ComputeZoneState(nodeReadyConditions []*v1.NodeCondition) 
 	}
 }
 
-// reconcileNodeLabels reconciles node labels.
-func (nc *Controller) reconcileNodeLabels(nodeName string) error {
-	node, err := nc.nodeLister.Get(nodeName)
-	if err != nil {
-		// If node not found, just ignore it.
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	if node.Labels == nil {
-		// Nothing to reconcile.
-		return nil
-	}
-
-	labelsToUpdate := map[string]string{}
-	for _, r := range labelReconcileInfo {
-		primaryValue, primaryExists := node.Labels[r.primaryKey]
-		secondaryValue, secondaryExists := node.Labels[r.secondaryKey]
-
-		if !primaryExists {
-			// The primary label key does not exist. This should not happen
-			// within our supported version skew range, when no external
-			// components/factors modifying the node object. Ignore this case.
-			continue
-		}
-		if secondaryExists && primaryValue != secondaryValue {
-			// Secondary label exists, but not consistent with the primary
-			// label. Need to reconcile.
-			labelsToUpdate[r.secondaryKey] = primaryValue
-
-		} else if !secondaryExists && r.ensureSecondaryExists {
-			// Apply secondary label based on primary label.
-			labelsToUpdate[r.secondaryKey] = primaryValue
-		}
-	}
-
-	if len(labelsToUpdate) == 0 {
-		return nil
-	}
-	if !nodeutil.AddOrUpdateLabelsOnNode(nc.kubeClient, labelsToUpdate, node) {
-		return fmt.Errorf("failed update labels for node %+v", node)
-	}
-	return nil
+func hash(val string, max int) int {
+	hasher := fnv.New32a()
+	io.WriteString(hasher, val)
+	return int(hasher.Sum32()) % max
 }

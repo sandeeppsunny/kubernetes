@@ -1,20 +1,17 @@
-load("//build:container.bzl", "multi_arch_container")
-load("//build:platforms.bzl", "SERVER_PLATFORMS")
+load("@io_bazel_rules_docker//container:container.bzl", "container_bundle", "container_image")
 
-multi_arch_container(
-    name = "hyperkube",
-    architectures = SERVER_PLATFORMS["linux"],
-    base = "@debian-hyperkube-base-{ARCH}//image",
-    # {ARCH} is replaced by the macro, but STABLE_ vars are replaced by the
-    # build stamping, so we need to escape them
-    docker_push_tags = ["{{STABLE_DOCKER_PUSH_REGISTRY}}/hyperkube-{ARCH}:{{STABLE_DOCKER_TAG}}"],
-    docker_tags = ["{{STABLE_DOCKER_REGISTRY}}/hyperkube-{ARCH}:{{STABLE_DOCKER_TAG}}"],
+container_image(
+    name = "hyperkube-internal",
+    base = "@debian-hyperkube-base-amd64//image",
     files = [
         "//cmd/hyperkube",
     ],
     stamp = True,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+)
+
+container_bundle(
+    name = "hyperkube",
+    images = {"k8s.gcr.io/hyperkube-amd64:{STABLE_DOCKER_TAG}": "hyperkube-internal"},
 )
 
 filegroup(

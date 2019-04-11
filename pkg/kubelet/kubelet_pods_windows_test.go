@@ -23,7 +23,6 @@ import (
 	"k8s.io/api/core/v1"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/util/mount"
-	"k8s.io/kubernetes/pkg/volume/util/subpath"
 )
 
 func TestMakeMountsWindows(t *testing.T) {
@@ -83,8 +82,7 @@ func TestMakeMountsWindows(t *testing.T) {
 	}
 
 	fm := &mount.FakeMounter{}
-	fsp := &subpath.FakeSubpath{}
-	mounts, _, _ := makeMounts(&pod, "/pod", &container, "fakepodname", "", "", podVolumes, fm, fsp, nil)
+	mounts, _, _ := makeMounts(&pod, "/pod", &container, "fakepodname", "", "", podVolumes, fm, nil)
 
 	expectedMounts := []kubecontainer.Mount{
 		{

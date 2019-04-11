@@ -472,11 +472,7 @@ func (tc *legacyTestCase) runTest(t *testing.T) {
 		if tc.finished {
 			return true, &v1.Event{}, nil
 		}
-		create, ok := action.(core.CreateAction)
-		if !ok {
-			return false, nil, nil
-		}
-		obj := create.GetObject().(*v1.Event)
+		obj := action.(core.CreateAction).GetObject().(*v1.Event)
 		if tc.verifyEvents {
 			switch obj.Reason {
 			case "SuccessfulRescale":
@@ -498,9 +494,9 @@ func (tc *legacyTestCase) runTest(t *testing.T) {
 	defaultDownscaleStabilisationWindow := 5 * time.Minute
 
 	hpaController := NewHorizontalController(
-		eventClient.CoreV1(),
+		eventClient.Core(),
 		testScaleClient,
-		testClient.AutoscalingV1(),
+		testClient.Autoscaling(),
 		testrestmapper.TestOnlyStaticRESTMapper(legacyscheme.Scheme),
 		metricsClient,
 		informerFactory.Autoscaling().V1().HorizontalPodAutoscalers(),

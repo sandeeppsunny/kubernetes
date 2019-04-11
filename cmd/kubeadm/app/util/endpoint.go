@@ -28,11 +28,11 @@ import (
 	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 )
 
-// GetControlPlaneEndpoint returns a properly formatted endpoint for the control plane built according following rules:
+// GetMasterEndpoint returns a properly formatted endpoint for the control plane built according following rules:
 // - If the controlPlaneEndpoint is defined, use it.
 // - if the controlPlaneEndpoint is defined but without a port number, use the controlPlaneEndpoint + localEndpoint.BindPort is used.
 // - Otherwise, in case the controlPlaneEndpoint is not defined, use the localEndpoint.AdvertiseAddress + the localEndpoint.BindPort.
-func GetControlPlaneEndpoint(controlPlaneEndpoint string, localEndpoint *kubeadmapi.APIEndpoint) (string, error) {
+func GetMasterEndpoint(controlPlaneEndpoint string, localEndpoint *kubeadmapi.APIEndpoint) (string, error) {
 	// parse the bind port
 	bindPortString := strconv.Itoa(int(localEndpoint.BindPort))
 	if _, err := ParsePort(bindPortString); err != nil {
@@ -45,8 +45,8 @@ func GetControlPlaneEndpoint(controlPlaneEndpoint string, localEndpoint *kubeadm
 		return "", errors.Errorf("invalid value `%s` given for api.advertiseAddress", localEndpoint.AdvertiseAddress)
 	}
 
-	// set the control-plane url using localEndpoint.AdvertiseAddress + the localEndpoint.BindPort
-	controlPlaneURL := &url.URL{
+	// set the master url using localEndpoint.AdvertiseAddress + the localEndpoint.BindPort
+	masterURL := &url.URL{
 		Scheme: "https",
 		Host:   net.JoinHostPort(ip.String(), bindPortString),
 	}
@@ -69,14 +69,14 @@ func GetControlPlaneEndpoint(controlPlaneEndpoint string, localEndpoint *kubeadm
 			port = bindPortString
 		}
 
-		// overrides the control-plane url using the controlPlaneAddress (and eventually the bindport)
-		controlPlaneURL = &url.URL{
+		// overrides the master url using the controlPlaneAddress (and eventually the bindport)
+		masterURL = &url.URL{
 			Scheme: "https",
 			Host:   net.JoinHostPort(host, port),
 		}
 	}
 
-	return controlPlaneURL.String(), nil
+	return masterURL.String(), nil
 }
 
 // ParseHostPort parses a network address of the form "host:port", "ipv4:port", "[ipv6]:port" into host and port;

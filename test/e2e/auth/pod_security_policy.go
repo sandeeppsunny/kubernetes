@@ -40,8 +40,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const nobodyUser = int64(65534)
-
 var _ = SIGDescribe("PodSecurityPolicy", func() {
 	f := framework.NewDefaultFramework("podsecuritypolicy")
 	f.SkipPrivilegedPSPBinding = true
@@ -188,21 +186,6 @@ func testPrivilegedPods(tester func(pod *v1.Pod)) {
 		sysadmin.Spec.Containers[0].SecurityContext.AllowPrivilegeEscalation = nil
 		tester(sysadmin)
 	})
-
-	By("Running a RunAsGroup pod", func() {
-		sysadmin := restrictedPod("runasgroup")
-		gid := int64(0)
-		sysadmin.Spec.Containers[0].SecurityContext.RunAsGroup = &gid
-		tester(sysadmin)
-	})
-
-	By("Running a RunAsUser pod", func() {
-		sysadmin := restrictedPod("runasuser")
-		uid := int64(0)
-		sysadmin.Spec.Containers[0].SecurityContext.RunAsUser = &uid
-		tester(sysadmin)
-	})
-
 }
 
 // createAndBindPSP creates a PSP in the policy API group.
@@ -261,8 +244,7 @@ func restrictedPod(name string) *v1.Pod {
 				Image: imageutils.GetPauseImageName(),
 				SecurityContext: &v1.SecurityContext{
 					AllowPrivilegeEscalation: boolPtr(false),
-					RunAsUser:                utilpointer.Int64Ptr(nobodyUser),
-					RunAsGroup:               utilpointer.Int64Ptr(nobodyUser),
+					RunAsUser:                utilpointer.Int64Ptr(65534),
 				},
 			}},
 		},
@@ -287,9 +269,6 @@ func privilegedPSP(name string) *policy.PodSecurityPolicy {
 			HostPID:                  true,
 			RunAsUser: policy.RunAsUserStrategyOptions{
 				Rule: policy.RunAsUserStrategyRunAsAny,
-			},
-			RunAsGroup: &policy.RunAsGroupStrategyOptions{
-				Rule: policy.RunAsGroupStrategyRunAsAny,
 			},
 			SELinux: policy.SELinuxStrategyOptions{
 				Rule: policy.SELinuxStrategyRunAsAny,
@@ -345,11 +324,6 @@ func restrictedPSP(name string) *policy.PodSecurityPolicy {
 			HostPID:     false,
 			RunAsUser: policy.RunAsUserStrategyOptions{
 				Rule: policy.RunAsUserStrategyMustRunAsNonRoot,
-			},
-			RunAsGroup: &policy.RunAsGroupStrategyOptions{
-				Rule: policy.RunAsGroupStrategyMustRunAs,
-				Ranges: []policy.IDRange{
-					{Min: nobodyUser, Max: nobodyUser}},
 			},
 			SELinux: policy.SELinuxStrategyOptions{
 				Rule: policy.SELinuxStrategyRunAsAny,

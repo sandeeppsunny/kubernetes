@@ -100,7 +100,7 @@ func Test_nodeTaints(t *testing.T) {
 			if tt.features != nil {
 				c.features = tt.features
 			}
-			err := c.Admit(attributes, nil)
+			err := c.Admit(attributes)
 			if err != nil {
 				t.Errorf("nodePlugin.Admit() error = %v", err)
 			}

@@ -201,15 +201,12 @@ func (plugin *rbdPlugin) ExpandVolumeDevice(spec *volume.Spec, newSize resource.
 	}
 }
 
-func (plugin *rbdPlugin) NodeExpand(resizeOptions volume.NodeResizeOptions) (bool, error) {
-	_, err := volutil.GenericResizeFS(plugin.host, plugin.GetPluginName(), resizeOptions.DevicePath, resizeOptions.DeviceMountPath)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+func (plugin *rbdPlugin) ExpandFS(spec *volume.Spec, devicePath, deviceMountPath string, _, _ resource.Quantity) error {
+	_, err := volutil.GenericResizeFS(plugin.host, plugin.GetPluginName(), devicePath, deviceMountPath)
+	return err
 }
 
-var _ volume.NodeExpandableVolumePlugin = &rbdPlugin{}
+var _ volume.FSResizableVolumePlugin = &rbdPlugin{}
 
 func (expander *rbdVolumeExpander) ResizeImage(oldSize resource.Quantity, newSize resource.Quantity) (resource.Quantity, error) {
 	return expander.manager.ExpandImage(expander, oldSize, newSize)
@@ -475,7 +472,7 @@ func (plugin *rbdPlugin) NewBlockVolumeMapper(spec *volume.Spec, pod *v1.Pod, _ 
 			if kubeClient == nil {
 				return nil, fmt.Errorf("Cannot get kube client")
 			}
-			secrets, err := kubeClient.CoreV1().Secrets(secretNs).Get(secretName, metav1.GetOptions{})
+			secrets, err := kubeClient.Core().Secrets(secretNs).Get(secretName, metav1.GetOptions{})
 			if err != nil {
 				err = fmt.Errorf("Couldn't get secret %v/%v err: %v", secretNs, secretName, err)
 				return nil, err

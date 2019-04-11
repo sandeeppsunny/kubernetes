@@ -106,16 +106,16 @@ func invokeTest(f *framework.Framework, client clientset.Interface, namespace st
 	scParameters["diskformat"] = diskFormat
 
 	By("Creating Storage Class With DiskFormat")
-	storageClassSpec := getVSphereStorageClassSpec("thinsc", scParameters, nil)
+	storageClassSpec := getVSphereStorageClassSpec("thinsc", scParameters)
 	storageclass, err := client.StorageV1().StorageClasses().Create(storageClassSpec)
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	defer client.StorageV1().StorageClasses().Delete(storageclass.Name, nil)
 
 	By("Creating PVC using the Storage Class")
 	pvclaimSpec := getVSphereClaimSpecWithStorageClass(namespace, "2Gi", storageclass)
 	pvclaim, err := client.CoreV1().PersistentVolumeClaims(namespace).Create(pvclaimSpec)
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	defer func() {
 		client.CoreV1().PersistentVolumeClaims(namespace).Delete(pvclaimSpec.Name, nil)
@@ -123,15 +123,15 @@ func invokeTest(f *framework.Framework, client clientset.Interface, namespace st
 
 	By("Waiting for claim to be in bound phase")
 	err = framework.WaitForPersistentVolumeClaimPhase(v1.ClaimBound, client, pvclaim.Namespace, pvclaim.Name, framework.Poll, framework.ClaimProvisionTimeout)
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	// Get new copy of the claim
 	pvclaim, err = client.CoreV1().PersistentVolumeClaims(pvclaim.Namespace).Get(pvclaim.Name, metav1.GetOptions{})
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	// Get the bound PV
 	pv, err := client.CoreV1().PersistentVolumes().Get(pvclaim.Spec.VolumeName, metav1.GetOptions{})
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	/*
 		PV is required to be attached to the Node. so that using govmomi API we can grab Disk's Backing Info
@@ -141,14 +141,14 @@ func invokeTest(f *framework.Framework, client clientset.Interface, namespace st
 	// Create pod to attach Volume to Node
 	podSpec := getVSpherePodSpecWithClaim(pvclaim.Name, nodeKeyValueLabel, "while true ; do sleep 2 ; done")
 	pod, err := client.CoreV1().Pods(namespace).Create(podSpec)
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	By("Waiting for pod to be running")
 	Expect(framework.WaitForPodNameRunningInNamespace(client, pod.Name, namespace)).To(Succeed())
 
 	isAttached, err := diskIsAttached(pv.Spec.VsphereVolume.VolumePath, nodeName)
 	Expect(isAttached).To(BeTrue())
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	By("Verify Disk Format")
 	Expect(verifyDiskFormat(client, nodeName, pv.Spec.VsphereVolume.VolumePath, diskFormat)).To(BeTrue(), "DiskFormat Verification Failed")
@@ -174,7 +174,7 @@ func verifyDiskFormat(client clientset.Interface, nodeName string, pvVolumePath 
 	nodeInfo := TestContext.NodeMapper.GetNodeInfo(nodeName)
 	vm := object.NewVirtualMachine(nodeInfo.VSphere.Client.Client, nodeInfo.VirtualMachineRef)
 	vmDevices, err := vm.Device(ctx)
-	framework.ExpectNoError(err)
+	Expect(err).NotTo(HaveOccurred())
 
 	disks := vmDevices.SelectByType((*types.VirtualDisk)(nil))
 

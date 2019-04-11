@@ -19,14 +19,13 @@ package common
 import (
 	"fmt"
 
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/kubernetes/test/e2e/framework"
 	imageutils "k8s.io/kubernetes/test/utils/image"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("[sig-node] ConfigMap", func() {
@@ -125,12 +124,7 @@ var _ = Describe("[sig-node] ConfigMap", func() {
 		})
 	})
 
-	/*
-	   Release : v1.14
-	   Testname: ConfigMap, with empty-key
-	   Description: Attempt to create a ConfigMap with an empty key. The creation MUST fail.
-	*/
-	framework.ConformanceIt("should fail to create ConfigMap with empty key", func() {
+	It("should fail to create configMap in volume due to empty configmap key", func() {
 		configMap, err := newConfigMapWithEmptyKey(f)
 		Expect(err).To(HaveOccurred(), "created configMap %q with empty key in namespace %q", configMap.Name, f.Namespace.Name)
 	})

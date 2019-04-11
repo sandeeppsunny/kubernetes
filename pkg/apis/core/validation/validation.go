@@ -61,9 +61,11 @@ const isInvalidQuotaResource string = `must be a standard resource for quota`
 const fieldImmutableErrorMsg string = apimachineryvalidation.FieldImmutableErrorMsg
 const isNotIntegerErrorMsg string = `must be an integer`
 const isNotPositiveErrorMsg string = `must be greater than zero`
+const csiDriverNameRexpErrMsg string = "must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"
+const csiDriverNameRexpFmt string = `^[a-zA-Z0-9][-a-zA-Z0-9_.]{0,61}[a-zA-Z-0-9]$`
 
 var pdPartitionErrorMsg string = validation.InclusiveRangeError(1, 255)
-var fileModeErrorMsg = "must be a number between 0 and 0777 (octal), both inclusive"
+var fileModeErrorMsg string = "must be a number between 0 and 0777 (octal), both inclusive"
 
 // BannedOwners is a black list of object that are not allowed to be owners.
 var BannedOwners = apimachineryvalidation.BannedOwners
@@ -71,6 +73,8 @@ var BannedOwners = apimachineryvalidation.BannedOwners
 var iscsiInitiatorIqnRegex = regexp.MustCompile(`iqn\.\d{4}-\d{2}\.([[:alnum:]-.]+)(:[^,;*&$|\s]+)$`)
 var iscsiInitiatorEuiRegex = regexp.MustCompile(`^eui.[[:alnum:]]{16}$`)
 var iscsiInitiatorNaaRegex = regexp.MustCompile(`^naa.[[:alnum:]]{32}$`)
+
+var csiDriverNameRexp = regexp.MustCompile(csiDriverNameRexpFmt)
 
 // ValidateHasLabel requires that metav1.ObjectMeta has a Label with key and expectedValue
 func ValidateHasLabel(meta metav1.ObjectMeta, fldPath *field.Path, key, expectedValue string) field.ErrorList {
@@ -624,14 +628,6 @@ func validateVolumeSource(source *core.VolumeSource, fldPath *field.Path, volNam
 		} else {
 			numVolumes++
 			allErrs = append(allErrs, validateScaleIOVolumeSource(source.ScaleIO, fldPath.Child("scaleIO"))...)
-		}
-	}
-	if source.CSI != nil {
-		if numVolumes > 0 {
-			allErrs = append(allErrs, field.Forbidden(fldPath.Child("csi"), "may not specify more than 1 volume type"))
-		} else {
-			numVolumes++
-			allErrs = append(allErrs, validateCSIVolumeSource(source.CSI, fldPath.Child("csi"))...)
 		}
 	}
 
@@ -1305,8 +1301,8 @@ func validateAzureDisk(azure *core.AzureDiskVolumeSource, fldPath *field.Path) f
 	var supportedCachingModes = sets.NewString(string(core.AzureDataDiskCachingNone), string(core.AzureDataDiskCachingReadOnly), string(core.AzureDataDiskCachingReadWrite))
 	var supportedDiskKinds = sets.NewString(string(core.AzureSharedBlobDisk), string(core.AzureDedicatedBlobDisk), string(core.AzureManagedDisk))
 
-	diskURISupportedManaged := []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
-	diskURISupportedblob := []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
+	diskUriSupportedManaged := []string{"/subscriptions/{sub-id}/resourcegroups/{group-name}/providers/microsoft.compute/disks/{disk-id}"}
+	diskUriSupportedblob := []string{"https://{account-name}.blob.core.windows.net/{container-name}/{disk-name}.vhd"}
 
 	allErrs := field.ErrorList{}
 	if azure.DiskName == "" {
@@ -1327,11 +1323,11 @@ func validateAzureDisk(azure *core.AzureDiskVolumeSource, fldPath *field.Path) f
 
 	// validate that DiskUri is the correct format
 	if azure.Kind != nil && *azure.Kind == core.AzureManagedDisk && strings.Index(azure.DataDiskURI, "/subscriptions/") != 0 {
-		allErrs = append(allErrs, field.NotSupported(fldPath.Child("diskURI"), azure.DataDiskURI, diskURISupportedManaged))
+		allErrs = append(allErrs, field.NotSupported(fldPath.Child("diskURI"), azure.DataDiskURI, diskUriSupportedManaged))
 	}
 
 	if azure.Kind != nil && *azure.Kind != core.AzureManagedDisk && strings.Index(azure.DataDiskURI, "https://") != 0 {
-		allErrs = append(allErrs, field.NotSupported(fldPath.Child("diskURI"), azure.DataDiskURI, diskURISupportedblob))
+		allErrs = append(allErrs, field.NotSupported(fldPath.Child("diskURI"), azure.DataDiskURI, diskUriSupportedblob))
 	}
 
 	return allErrs
@@ -1450,10 +1446,9 @@ func ValidateCSIDriverName(driverName string, fldPath *field.Path) field.ErrorLi
 		allErrs = append(allErrs, field.TooLong(fldPath, driverName, 63))
 	}
 
-	for _, msg := range validation.IsDNS1123Subdomain(strings.ToLower(driverName)) {
-		allErrs = append(allErrs, field.Invalid(fldPath, driverName, msg))
+	if !csiDriverNameRexp.MatchString(driverName) {
+		allErrs = append(allErrs, field.Invalid(fldPath, driverName, validation.RegexError(csiDriverNameRexpErrMsg, csiDriverNameRexpFmt, "csi-hostpath")))
 	}
-
 	return allErrs
 }
 
@@ -1492,20 +1487,16 @@ func validateCSIPersistentVolumeSource(csi *core.CSIPersistentVolumeSource, fldP
 		}
 	}
 
-	return allErrs
-}
-
-func validateCSIVolumeSource(csi *core.CSIVolumeSource, fldPath *field.Path) field.ErrorList {
-	allErrs := field.ErrorList{}
-	allErrs = append(allErrs, ValidateCSIDriverName(csi.Driver, fldPath.Child("driver"))...)
-
-	if csi.NodePublishSecretRef != nil {
-		if len(csi.NodePublishSecretRef.Name) == 0 {
-			allErrs = append(allErrs, field.Required(fldPath.Child("nodePublishSecretRef ", "name"), ""))
+	if csi.NodeStageSecretRef != nil {
+		if len(csi.NodeStageSecretRef.Name) == 0 {
+			allErrs = append(allErrs, field.Required(fldPath.Child("nodeStageSecretRef", "name"), ""))
 		} else {
-			for _, msg := range ValidateSecretName(csi.NodePublishSecretRef.Name, false) {
-				allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), csi.NodePublishSecretRef.Name, msg))
-			}
+			allErrs = append(allErrs, ValidateDNS1123Label(csi.NodeStageSecretRef.Name, fldPath.Child("name"))...)
+		}
+		if len(csi.NodeStageSecretRef.Namespace) == 0 {
+			allErrs = append(allErrs, field.Required(fldPath.Child("nodeStageSecretRef", "namespace"), ""))
+		} else {
+			allErrs = append(allErrs, ValidateDNS1123Label(csi.NodeStageSecretRef.Namespace, fldPath.Child("namespace"))...)
 		}
 	}
 
@@ -2273,14 +2264,6 @@ func ValidateVolumeMounts(mounts []core.VolumeMount, voldevices map[string]strin
 			allErrs = append(allErrs, validateLocalDescendingPath(mnt.SubPath, fldPath.Child("subPath"))...)
 		}
 
-		if len(mnt.SubPathExpr) > 0 {
-			if len(mnt.SubPath) > 0 {
-				allErrs = append(allErrs, field.Invalid(idxPath.Child("subPathExpr"), mnt.SubPathExpr, "subPathExpr and subPath are mutually exclusive"))
-			}
-
-			allErrs = append(allErrs, validateLocalDescendingPath(mnt.SubPathExpr, fldPath.Child("subPathExpr"))...)
-		}
-
 		if mnt.MountPropagation != nil {
 			allErrs = append(allErrs, validateMountPropagation(mnt.MountPropagation, container, fldPath.Child("mountPropagation"))...)
 		}
@@ -2704,10 +2687,6 @@ func validatePodDNSConfig(dnsConfig *core.PodDNSConfig, dnsPolicy *core.DNSPolic
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("searches"), dnsConfig.Searches, "must not have more than 256 characters (including spaces) in the search list"))
 		}
 		for i, search := range dnsConfig.Searches {
-			// it is fine to have a trailing dot
-			if strings.HasSuffix(search, ".") {
-				search = search[0 : len(search)-1]
-			}
 			allErrs = append(allErrs, ValidateDNS1123Subdomain(search, fldPath.Child("searches").Index(i))...)
 		}
 		// Validate options.
@@ -4709,8 +4688,8 @@ func ValidateResourceRequirements(requirements *core.ResourceRequirements, fldPa
 	allErrs := field.ErrorList{}
 	limPath := fldPath.Child("limits")
 	reqPath := fldPath.Child("requests")
-	limContainsCPUOrMemory := false
-	reqContainsCPUOrMemory := false
+	limContainsCpuOrMemory := false
+	reqContainsCpuOrMemory := false
 	limContainsHugePages := false
 	reqContainsHugePages := false
 	supportedQoSComputeResources := sets.NewString(string(core.ResourceCPU), string(core.ResourceMemory))
@@ -4728,7 +4707,7 @@ func ValidateResourceRequirements(requirements *core.ResourceRequirements, fldPa
 		}
 
 		if supportedQoSComputeResources.Has(string(resourceName)) {
-			limContainsCPUOrMemory = true
+			limContainsCpuOrMemory = true
 		}
 	}
 	for resourceName, quantity := range requirements.Requests {
@@ -4754,11 +4733,11 @@ func ValidateResourceRequirements(requirements *core.ResourceRequirements, fldPa
 			reqContainsHugePages = true
 		}
 		if supportedQoSComputeResources.Has(string(resourceName)) {
-			reqContainsCPUOrMemory = true
+			reqContainsCpuOrMemory = true
 		}
 
 	}
-	if !limContainsCPUOrMemory && !reqContainsCPUOrMemory && (reqContainsHugePages || limContainsHugePages) {
+	if !limContainsCpuOrMemory && !reqContainsCpuOrMemory && (reqContainsHugePages || limContainsHugePages) {
 		allErrs = append(allErrs, field.Forbidden(fldPath, fmt.Sprintf("HugePages require cpu or memory")))
 	}
 

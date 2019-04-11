@@ -663,7 +663,7 @@ type KubeletConfiguration struct {
 	ContainerLogMaxFiles *int32 `json:"containerLogMaxFiles,omitempty"`
 	// ConfigMapAndSecretChangeDetectionStrategy is a mode in which
 	// config map and secret managers are running.
-	// Default: "Watch"
+	// Default: "Watching"
 	// +optional
 	ConfigMapAndSecretChangeDetectionStrategy ResourceChangeDetectionStrategy `json:"configMapAndSecretChangeDetectionStrategy,omitempty"`
 

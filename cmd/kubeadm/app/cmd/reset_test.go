@@ -25,7 +25,7 @@ import (
 
 	"github.com/lithammer/dedent"
 
-	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
+	clientsetfake "k8s.io/client-go/kubernetes/fake"
 	kubeadmapiv1beta1 "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta1"
 	"k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/validation"
 	kubeadmconstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
@@ -275,38 +275,38 @@ func TestGetEtcdDataDir(t *testing.T) {
 		podYaml       string
 		expectErr     bool
 		writeManifest bool
-		validConfig   bool
+		validClient   bool
 	}{
 		"non-existent file returns error": {
 			expectErr:     true,
 			writeManifest: false,
-			validConfig:   true,
+			validClient:   true,
 		},
 		"return etcd data dir": {
 			dataDir:       "/path/to/etcd",
 			podYaml:       etcdPod,
 			expectErr:     false,
 			writeManifest: true,
-			validConfig:   true,
+			validClient:   true,
 		},
 		"invalid etcd pod": {
 			podYaml:       etcdPodInvalid,
 			expectErr:     true,
 			writeManifest: true,
-			validConfig:   true,
+			validClient:   true,
 		},
 		"etcd pod spec without data volume": {
 			podYaml:       etcdPodWithoutDataVolume,
 			expectErr:     true,
 			writeManifest: true,
-			validConfig:   true,
+			validClient:   true,
 		},
 		"kubeconfig file doesn't exist": {
 			dataDir:       "/path/to/etcd",
 			podYaml:       etcdPod,
 			expectErr:     false,
 			writeManifest: true,
-			validConfig:   false,
+			validClient:   false,
 		},
 	}
 
@@ -325,9 +325,9 @@ func TestGetEtcdDataDir(t *testing.T) {
 
 			var dataDir string
 			var err error
-			if test.validConfig {
-				cfg := &kubeadmapi.InitConfiguration{}
-				dataDir, err = getEtcdDataDir(manifestPath, cfg)
+			if test.validClient {
+				client := clientsetfake.NewSimpleClientset()
+				dataDir, err = getEtcdDataDir(manifestPath, client)
 			} else {
 				dataDir, err = getEtcdDataDir(manifestPath, nil)
 			}

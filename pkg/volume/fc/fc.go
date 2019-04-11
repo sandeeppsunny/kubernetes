@@ -19,7 +19,6 @@ package fc
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -258,20 +257,40 @@ func (plugin *fcPlugin) ConstructVolumeSpec(volumeName, mountPath string) (*volu
 	if len(globalPDPath) == 0 {
 		return nil, fmt.Errorf("couldn't fetch globalPDPath. failed to obtain volume spec")
 	}
-
-	wwns, lun, wwids, err := parsePDName(globalPDPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve volume plugin information from globalPDPath: %s", err)
+	arr := strings.Split(globalPDPath, "/")
+	if len(arr) < 1 {
+		return nil, fmt.Errorf("failed to retrieve volume plugin information from globalPDPath: %v", globalPDPath)
 	}
+	volumeInfo := arr[len(arr)-1]
 	// Create volume from wwn+lun or wwid
-	fcVolume := &v1.Volume{
-		Name: volumeName,
-		VolumeSource: v1.VolumeSource{
-			FC: &v1.FCVolumeSource{WWIDs: wwids, Lun: &lun, TargetWWNs: wwns},
-		},
+	var fcVolume *v1.Volume
+	if strings.Contains(volumeInfo, "-lun-") {
+		wwnLun := strings.Split(volumeInfo, "-lun-")
+		if len(wwnLun) < 2 {
+			return nil, fmt.Errorf("failed to retrieve TargetWWN and Lun. volumeInfo is invalid: %v", volumeInfo)
+		}
+		lun, err := strconv.Atoi(wwnLun[1])
+		if err != nil {
+			return nil, err
+		}
+		lun32 := int32(lun)
+		fcVolume = &v1.Volume{
+			Name: volumeName,
+			VolumeSource: v1.VolumeSource{
+				FC: &v1.FCVolumeSource{TargetWWNs: []string{wwnLun[0]}, Lun: &lun32},
+			},
+		}
+		klog.V(5).Infof("ConstructVolumeSpec: TargetWWNs: %v, Lun: %v",
+			fcVolume.VolumeSource.FC.TargetWWNs, *fcVolume.VolumeSource.FC.Lun)
+	} else {
+		fcVolume = &v1.Volume{
+			Name: volumeName,
+			VolumeSource: v1.VolumeSource{
+				FC: &v1.FCVolumeSource{WWIDs: []string{volumeInfo}},
+			},
+		}
+		klog.V(5).Infof("ConstructVolumeSpec: WWIDs: %v", fcVolume.VolumeSource.FC.WWIDs)
 	}
-	klog.V(5).Infof("ConstructVolumeSpec: TargetWWNs: %v, Lun: %v, WWIDs: %v",
-		fcVolume.VolumeSource.FC.TargetWWNs, *fcVolume.VolumeSource.FC.Lun, fcVolume.VolumeSource.FC.WWIDs)
 	return volume.NewSpecFromVolume(fcVolume), nil
 }
 
@@ -291,23 +310,36 @@ func (plugin *fcPlugin) ConstructBlockVolumeSpec(podUID types.UID, volumeName, m
 	}
 	klog.V(5).Infof("globalMapPathUUID: %v, err: %v", globalMapPathUUID, err)
 
-	// Retrieve globalPDPath from globalMapPathUUID
+	// Retrieve volumePluginDependentPath from globalMapPathUUID
 	// globalMapPathUUID examples:
 	//   wwn+lun: plugins/kubernetes.io/fc/volumeDevices/50060e801049cfd1-lun-0/{pod uuid}
 	//   wwid: plugins/kubernetes.io/fc/volumeDevices/3600508b400105e210000900000490000/{pod uuid}
-	globalPDPath := filepath.Dir(globalMapPathUUID)
-	// Create volume from wwn+lun or wwid
-	wwns, lun, wwids, err := parsePDName(globalPDPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve volume plugin information from globalPDPath: %s", err)
+	arr := strings.Split(globalMapPathUUID, "/")
+	if len(arr) < 2 {
+		return nil, fmt.Errorf("Fail to retrieve volume plugin information from globalMapPathUUID: %v", globalMapPathUUID)
 	}
-	fcPV := createPersistentVolumeFromFCVolumeSource(volumeName,
-		v1.FCVolumeSource{TargetWWNs: wwns, Lun: &lun, WWIDs: wwids})
-	klog.V(5).Infof("ConstructBlockVolumeSpec: TargetWWNs: %v, Lun: %v, WWIDs: %v",
-		fcPV.Spec.PersistentVolumeSource.FC.TargetWWNs,
-		*fcPV.Spec.PersistentVolumeSource.FC.Lun,
-		fcPV.Spec.PersistentVolumeSource.FC.WWIDs)
+	l := len(arr) - 2
+	volumeInfo := arr[l]
 
+	// Create volume from wwn+lun or wwid
+	var fcPV *v1.PersistentVolume
+	if strings.Contains(volumeInfo, "-lun-") {
+		wwnLun := strings.Split(volumeInfo, "-lun-")
+		lun, err := strconv.Atoi(wwnLun[1])
+		if err != nil {
+			return nil, err
+		}
+		lun32 := int32(lun)
+		fcPV = createPersistentVolumeFromFCVolumeSource(volumeName,
+			v1.FCVolumeSource{TargetWWNs: []string{wwnLun[0]}, Lun: &lun32})
+		klog.V(5).Infof("ConstructBlockVolumeSpec: TargetWWNs: %v, Lun: %v",
+			fcPV.Spec.PersistentVolumeSource.FC.TargetWWNs,
+			*fcPV.Spec.PersistentVolumeSource.FC.Lun)
+	} else {
+		fcPV = createPersistentVolumeFromFCVolumeSource(volumeName,
+			v1.FCVolumeSource{WWIDs: []string{volumeInfo}})
+		klog.V(5).Infof("ConstructBlockVolumeSpec: WWIDs: %v", fcPV.Spec.PersistentVolumeSource.FC.WWIDs)
+	}
 	return volume.NewSpecFromPersistentVolume(fcPV, false), nil
 }
 

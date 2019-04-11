@@ -289,10 +289,10 @@ func validateNewConfigMap(configMap *v1.ConfigMap, keyName string) error {
 	}
 
 	if _, exists := configMap.Data[keyName]; exists {
-		return fmt.Errorf("cannot add key %q, another key by that name already exists in Data for ConfigMap %q", keyName, configMap.Name)
+		return fmt.Errorf("cannot add key %s, another key by that name already exists in data: %v", keyName, configMap.Data)
 	}
 	if _, exists := configMap.BinaryData[keyName]; exists {
-		return fmt.Errorf("cannot add key %q, another key by that name already exists in BinaryData for ConfigMap %q", keyName, configMap.Name)
+		return fmt.Errorf("cannot add key %s, another key by that name already exists in binaryData: %v", keyName, configMap.BinaryData)
 	}
 	return nil
 }

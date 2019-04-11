@@ -66,7 +66,7 @@ var _ = utils.SIGDescribe("Volume Operations Storm [Feature:vsphere]", func() {
 		Expect(GetReadySchedulableNodeInfos()).NotTo(BeEmpty())
 		if os.Getenv("VOLUME_OPS_SCALE") != "" {
 			volume_ops_scale, err = strconv.Atoi(os.Getenv("VOLUME_OPS_SCALE"))
-			framework.ExpectNoError(err)
+			Expect(err).NotTo(HaveOccurred())
 		} else {
 			volume_ops_scale = DEFAULT_VOLUME_OPS_SCALE
 		}
@@ -79,7 +79,7 @@ var _ = utils.SIGDescribe("Volume Operations Storm [Feature:vsphere]", func() {
 		}
 		By("Deleting StorageClass")
 		err = client.StorageV1().StorageClasses().Delete(storageclass.Name, nil)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should create pod with many volumes and verify no attach call fails", func() {
@@ -87,24 +87,24 @@ var _ = utils.SIGDescribe("Volume Operations Storm [Feature:vsphere]", func() {
 		By("Creating Storage Class")
 		scParameters := make(map[string]string)
 		scParameters["diskformat"] = "thin"
-		storageclass, err = client.StorageV1().StorageClasses().Create(getVSphereStorageClassSpec("thinsc", scParameters, nil))
-		framework.ExpectNoError(err)
+		storageclass, err = client.StorageV1().StorageClasses().Create(getVSphereStorageClassSpec("thinsc", scParameters))
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Creating PVCs using the Storage Class")
 		count := 0
 		for count < volume_ops_scale {
 			pvclaims[count], err = framework.CreatePVC(client, namespace, getVSphereClaimSpecWithStorageClass(namespace, "2Gi", storageclass))
-			framework.ExpectNoError(err)
+			Expect(err).NotTo(HaveOccurred())
 			count++
 		}
 
 		By("Waiting for all claims to be in bound phase")
 		persistentvolumes, err = framework.WaitForPVClaimBoundPhase(client, pvclaims, framework.ClaimProvisionTimeout)
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Creating pod to attach PVs to the node")
 		pod, err := framework.CreatePod(client, namespace, nil, pvclaims, false, "")
-		framework.ExpectNoError(err)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Verify all volumes are accessible and available in the pod")
 		verifyVSphereVolumesAccessible(client, pod, persistentvolumes)

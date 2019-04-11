@@ -27,7 +27,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,11 +44,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/cli-runtime/pkg/genericclioptions/printers"
 	"k8s.io/client-go/rest/fake"
 	cmdtesting "k8s.io/kubernetes/pkg/kubectl/cmd/testing"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubectl/drain"
 	"k8s.io/kubernetes/pkg/kubectl/scheme"
 )
 
@@ -595,15 +593,14 @@ func TestDrain(t *testing.T) {
 			expectDelete: false,
 		},
 		{
-			description:   "orphaned DS-managed pod with --force",
-			node:          node,
-			expected:      cordonedNode,
-			pods:          []corev1.Pod{orphanedDsPod},
-			rcs:           []corev1.ReplicationController{},
-			args:          []string{"node", "--force"},
-			expectFatal:   false,
-			expectDelete:  true,
-			expectWarning: "WARNING: deleting Pods not managed by ReplicationController, ReplicaSet, Job, DaemonSet or StatefulSet: default/bar",
+			description:  "orphaned DS-managed pod with --force",
+			node:         node,
+			expected:     cordonedNode,
+			pods:         []corev1.Pod{orphanedDsPod},
+			rcs:          []corev1.ReplicationController{},
+			args:         []string{"node", "--force"},
+			expectFatal:  false,
+			expectDelete: true,
 		},
 		{
 			description:  "DS-managed pod with --ignore-daemonsets",
@@ -622,7 +619,7 @@ func TestDrain(t *testing.T) {
 			pods:          []corev1.Pod{dsPodWithEmptyDir},
 			rcs:           []corev1.ReplicationController{rc},
 			args:          []string{"node", "--ignore-daemonsets"},
-			expectWarning: "WARNING: ignoring DaemonSet-managed Pods: default/bar",
+			expectWarning: "WARNING: ignoring DaemonSet-managed Pods: bar",
 			expectFatal:   false,
 			expectDelete:  false,
 		},
@@ -728,7 +725,8 @@ func TestDrain(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
 				newNode := &corev1.Node{}
-				var deletions, evictions int32
+				deleted := false
+				evicted := false
 				tf := cmdtesting.NewTestFactory()
 				defer tf.Cleanup()
 
@@ -765,8 +763,8 @@ func TestDrain(t *testing.T) {
 							if testEviction {
 								resourceList.APIResources = []metav1.APIResource{
 									{
-										Name: drain.EvictionSubresource,
-										Kind: drain.EvictionKind,
+										Name: EvictionSubresource,
+										Kind: EvictionKind,
 									},
 								}
 							}
@@ -820,11 +818,10 @@ func TestDrain(t *testing.T) {
 							}
 							return &http.Response{StatusCode: 200, Header: cmdtesting.DefaultHeader(), Body: cmdtesting.ObjBody(codec, newNode)}, nil
 						case m.isFor("DELETE", "/namespaces/default/pods/bar"):
-							atomic.AddInt32(&deletions, 1)
+							deleted = true
 							return &http.Response{StatusCode: 204, Header: cmdtesting.DefaultHeader(), Body: cmdtesting.ObjBody(codec, &test.pods[0])}, nil
 						case m.isFor("POST", "/namespaces/default/pods/bar/eviction"):
-
-							atomic.AddInt32(&evictions, 1)
+							evicted = true
 							return &http.Response{StatusCode: 201, Header: cmdtesting.DefaultHeader(), Body: cmdtesting.ObjBody(codec, &policyv1beta1.Eviction{})}, nil
 						default:
 							t.Fatalf("%s: unexpected request: %v %#v\n%#v", test.description, req.Method, req.URL, req)
@@ -852,8 +849,6 @@ func TestDrain(t *testing.T) {
 				}()
 				if test.expectFatal {
 					if !sawFatal {
-						//t.Logf("outBuf = %s", outBuf.String())
-						//t.Logf("errBuf = %s", errBuf.String())
 						t.Fatalf("%s: unexpected non-error when using %s", test.description, currMethod)
 					}
 				} else {
@@ -863,34 +858,20 @@ func TestDrain(t *testing.T) {
 					}
 				}
 
-				deleted := deletions > 0
-				evicted := evictions > 0
-
 				if test.expectDelete {
 					// Test Delete
 					if !testEviction && !deleted {
 						t.Fatalf("%s: pod never deleted", test.description)
 					}
 					// Test Eviction
-					if testEviction {
-						if !evicted {
-							t.Fatalf("%s: pod never evicted", test.description)
-						}
-						if evictions > 1 {
-							t.Fatalf("%s: asked to evict same pod %d too many times", test.description, evictions-1)
-						}
+					if testEviction && !evicted {
+						t.Fatalf("%s: pod never evicted", test.description)
 					}
 				}
 				if !test.expectDelete {
 					if deleted {
 						t.Fatalf("%s: unexpected delete when using %s", test.description, currMethod)
 					}
-					if deletions > 1 {
-						t.Fatalf("%s: asked to deleted same pod %d too many times", test.description, deletions-1)
-					}
-				}
-				if deleted && evicted {
-					t.Fatalf("%s: same pod deleted %d times and evicted %d times", test.description, deletions, evictions)
 				}
 
 				if len(test.expectWarning) > 0 {
@@ -977,7 +958,7 @@ func TestDeletePods(t *testing.T) {
 			tf := cmdtesting.NewTestFactory()
 			defer tf.Cleanup()
 
-			o := DrainCmdOptions{
+			o := DrainOptions{
 				PrintFlags: genericclioptions.NewPrintFlags("drained").WithTypeSetter(scheme.Scheme),
 			}
 			o.Out = os.Stdout

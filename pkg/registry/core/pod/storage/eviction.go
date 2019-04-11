@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -30,10 +29,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
-	policyclient "k8s.io/client-go/kubernetes/typed/policy/v1beta1"
 	"k8s.io/client-go/util/retry"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/policy"
+	policyclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/policy/internalversion"
 )
 
 const (
@@ -154,7 +153,7 @@ func (r *EvictionREST) Create(ctx context.Context, obj runtime.Object, createVal
 }
 
 // checkAndDecrement checks if the provided PodDisruptionBudget allows any disruption.
-func (r *EvictionREST) checkAndDecrement(namespace string, podName string, pdb policyv1beta1.PodDisruptionBudget) error {
+func (r *EvictionREST) checkAndDecrement(namespace string, podName string, pdb policy.PodDisruptionBudget) error {
 	if pdb.Status.ObservedGeneration < pdb.Generation {
 		// TODO(mml): Add a Retry-After header.  Once there are time-based
 		// budgets, we can sometimes compute a sensible suggested value.  But
@@ -193,7 +192,7 @@ func (r *EvictionREST) checkAndDecrement(namespace string, podName string, pdb p
 }
 
 // getPodDisruptionBudgets returns any PDBs that match the pod or err if there's an error.
-func (r *EvictionREST) getPodDisruptionBudgets(ctx context.Context, pod *api.Pod) ([]policyv1beta1.PodDisruptionBudget, error) {
+func (r *EvictionREST) getPodDisruptionBudgets(ctx context.Context, pod *api.Pod) ([]policy.PodDisruptionBudget, error) {
 	if len(pod.Labels) == 0 {
 		return nil, nil
 	}
@@ -203,7 +202,7 @@ func (r *EvictionREST) getPodDisruptionBudgets(ctx context.Context, pod *api.Pod
 		return nil, err
 	}
 
-	var pdbs []policyv1beta1.PodDisruptionBudget
+	var pdbs []policy.PodDisruptionBudget
 	for _, pdb := range pdbList.Items {
 		if pdb.Namespace != pod.Namespace {
 			continue

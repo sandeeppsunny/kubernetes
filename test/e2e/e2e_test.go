@@ -22,17 +22,10 @@ import (
 	"os"
 	"testing"
 
-	// Never, ever remove the line with "/ginkgo". Without it,
-	// the ginkgo test runner will not detect that this
-	// directory contains a Ginkgo test suite.
-	// See https://github.com/kubernetes/kubernetes/issues/74827
-	// "github.com/onsi/ginkgo"
-
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 	"k8s.io/kubernetes/test/e2e/framework/viperconfig"
 	"k8s.io/kubernetes/test/e2e/generated"
-	"k8s.io/kubernetes/test/utils/image"
 
 	// test sources
 	_ "k8s.io/kubernetes/test/e2e/apimachinery"
@@ -51,7 +44,6 @@ import (
 	_ "k8s.io/kubernetes/test/e2e/scheduling"
 	_ "k8s.io/kubernetes/test/e2e/servicecatalog"
 	_ "k8s.io/kubernetes/test/e2e/storage"
-	_ "k8s.io/kubernetes/test/e2e/storage/external"
 	_ "k8s.io/kubernetes/test/e2e/ui"
 	_ "k8s.io/kubernetes/test/e2e/windows"
 )
@@ -65,14 +57,6 @@ func init() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-
-	if framework.TestContext.ListImages {
-		for _, v := range image.GetImageConfigs() {
-			fmt.Println(v.GetE2EImage())
-		}
-		os.Exit(0)
-	}
-
 	framework.AfterReadingAllFlags(&framework.TestContext)
 
 	// TODO: Deprecating repo-root over time... instead just use gobindata_util.go , see #23987.
@@ -89,7 +73,6 @@ func init() {
 		Asset:      generated.Asset,
 		AssetNames: generated.AssetNames,
 	})
-
 }
 
 func TestE2E(t *testing.T) {

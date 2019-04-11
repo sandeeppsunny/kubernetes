@@ -18,9 +18,8 @@ limitations under the License.
 package reconcilers
 
 import (
-	"net"
-
 	corev1 "k8s.io/api/core/v1"
+	"net"
 )
 
 // NoneEndpointReconciler allows for the endpoint reconciler to be disabled
@@ -37,10 +36,7 @@ func (r *noneEndpointReconciler) ReconcileEndpoints(serviceName string, ip net.I
 	return nil
 }
 
-// RemoveEndpoints noop reconcile
-func (r *noneEndpointReconciler) RemoveEndpoints(serviceName string, ip net.IP, endpointPorts []corev1.EndpointPort) error {
+// StopReconciling noop reconcile
+func (r *noneEndpointReconciler) StopReconciling(serviceName string, ip net.IP, endpointPorts []corev1.EndpointPort) error {
 	return nil
-}
-
-func (r *noneEndpointReconciler) StopReconciling() {
 }

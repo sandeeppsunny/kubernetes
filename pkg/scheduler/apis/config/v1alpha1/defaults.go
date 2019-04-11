@@ -85,6 +85,10 @@ func SetDefaults_KubeSchedulerConfiguration(obj *kubescedulerconfigv1alpha1.Kube
 		obj.LeaderElection.LockObjectName = kubescedulerconfigv1alpha1.SchedulerDefaultLockObjectName
 	}
 
+	if len(obj.FailureDomains) == 0 {
+		obj.FailureDomains = defaultFailureDomains
+	}
+
 	if len(obj.ClientConnection.ContentType) == 0 {
 		obj.ClientConnection.ContentType = "application/vnd.kubernetes.protobuf"
 	}
