@@ -42,11 +42,16 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	samplev1alpha1 "k8s.io/sample-apiserver/pkg/apis/wardle/v1alpha1"
+	"k8s.io/utils/pointer"
 
 	. "github.com/onsi/ginkgo"
 )
 
 var serverAggregatorVersion = utilversion.MustParseSemantic("v1.10.0")
+
+const (
+	aggregatorServicePort = 7443
+)
 
 var _ = SIGDescribe("Aggregator", func() {
 	var ns string
@@ -72,11 +77,12 @@ var _ = SIGDescribe("Aggregator", func() {
 		aggrclient = f.AggregatorClient
 	})
 
-	It("Should be able to support the 1.10 Sample API Server using the current Aggregator", func() {
-		// Make sure the relevant provider supports Aggregator
-		framework.SkipUnlessServerVersionGTE(serverAggregatorVersion, f.ClientSet.Discovery())
-		framework.SkipUnlessProviderIs("gce", "gke")
-
+	/*
+		    Testname: aggregator-supports-the-sample-apiserver
+		    Description: Ensure that the sample-apiserver code from 1.10 and compiled against 1.10
+			will work on the current Aggregator/API-Server.
+	*/
+	framework.ConformanceIt("Should be able to support the 1.10 Sample API Server using the current Aggregator", func() {
 		// Testing a 1.10 version of the sample-apiserver
 		TestSampleAPIServer(f, imageutils.GetE2EImage(imageutils.APIServer))
 	})
@@ -179,7 +185,7 @@ func TestSampleAPIServer(f *framework.Framework, image string) {
 
 	// kubectl create -f deploy.yaml
 	deploymentName := "sample-apiserver-deployment"
-	etcdImage := "quay.io/coreos/etcd:v3.3.10"
+	etcdImage := imageutils.GetE2EImage(imageutils.Etcd)
 	podLabels := map[string]string{"app": "sample-apiserver", "apiserver": "true"}
 	replicas := int32(1)
 	zero := int64(0)
@@ -215,6 +221,9 @@ func TestSampleAPIServer(f *framework.Framework, image string) {
 		{
 			Name:  "etcd",
 			Image: etcdImage,
+			Command: []string{
+				"/usr/local/bin/etcd",
+			},
 		},
 	}
 	d := &apps.Deployment{
@@ -262,7 +271,7 @@ func TestSampleAPIServer(f *framework.Framework, image string) {
 			Ports: []v1.ServicePort{
 				{
 					Protocol:   "TCP",
-					Port:       443,
+					Port:       aggregatorServicePort,
 					TargetPort: intstr.FromInt(443),
 				},
 			},
@@ -313,6 +322,7 @@ func TestSampleAPIServer(f *framework.Framework, image string) {
 			Service: &apiregistrationv1beta1.ServiceReference{
 				Namespace: namespace,
 				Name:      "sample-api",
+				Port:      pointer.Int32Ptr(aggregatorServicePort),
 			},
 			Group:                "wardle.k8s.io",
 			Version:              "v1alpha1",

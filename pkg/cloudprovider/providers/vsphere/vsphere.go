@@ -38,7 +38,7 @@ import (
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
 	vmwaretypes "github.com/vmware/govmomi/vim25/types"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
@@ -569,7 +569,8 @@ func getLocalIP() ([]v1.NodeAddress, error) {
 						vmMACAddr := strings.ToLower(i.HardwareAddr.String())
 						// Making sure that the MAC address is long enough
 						if len(vmMACAddr) < 17 {
-							return addrs, fmt.Errorf("MAC address %q is invalid", vmMACAddr)
+							klog.V(4).Infof("Skipping invalid MAC address: %q", vmMACAddr)
+							continue
 						}
 						if vmwareOUI[vmMACAddr[:8]] {
 							nodehelpers.AddToNodeAddresses(&addrs,
@@ -584,7 +585,7 @@ func getLocalIP() ([]v1.NodeAddress, error) {
 							)
 							klog.V(4).Infof("Detected local IP address as %q", ipnet.IP.String())
 						} else {
-							klog.Warningf("Failed to patch IP as MAC address %q does not belong to a VMware platform", vmMACAddr)
+							klog.V(4).Infof("Failed to patch IP for interface %q as MAC address %q does not belong to a VMware platform", i.Name, vmMACAddr)
 						}
 					}
 				}
@@ -1233,6 +1234,10 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 				// If zone is specified, first get the datastores in the zone.
 				dsList, err = getDatastoresForZone(ctx, dc, vs.nodeManager, volumeOptions.Zone)
 
+				if err != nil {
+					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
+					return "", err
+				}
 				// If unable to get any datastore, fail the operation.
 				if len(dsList) == 0 {
 					err := fmt.Errorf("Failed to find a shared datastore matching zone %s", volumeOptions.Zone)
@@ -1256,6 +1261,10 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 				klog.V(4).Infof("Specified zone : %s", volumeOptions.Zone)
 				dsList, err = getDatastoresForZone(ctx, dc, vs.nodeManager, volumeOptions.Zone)
 
+				if err != nil {
+					klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
+					return "", err
+				}
 				// If unable to get any datastore, fail the operation
 				if len(dsList) == 0 {
 					err := fmt.Errorf("Failed to find a shared datastore matching zone %s", volumeOptions.Zone)
@@ -1263,9 +1272,6 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 					return "", err
 				}
 
-				if err != nil {
-					return "", err
-				}
 				datastore, err = getMostFreeDatastoreName(ctx, nil, dsList)
 				if err != nil {
 					klog.Errorf("Failed to get shared datastore: %+v", err)
@@ -1290,6 +1296,7 @@ func (vs *VSphere) CreateVolume(volumeOptions *vclib.VolumeOptions) (canonicalVo
 					klog.V(4).Infof("Validating if datastore %s is in zone %s ", datastore, volumeOptions.Zone)
 					sharedDsList, err = getDatastoresForZone(ctx, dc, vs.nodeManager, volumeOptions.Zone)
 					if err != nil {
+						klog.Errorf("Failed to find a shared datastore matching zone %s. err: %+v", volumeOptions.Zone, err)
 						return "", err
 					}
 					// Prepare error msg to be used later, if required.
@@ -1425,10 +1432,20 @@ func (vs *VSphere) NodeManager() (nodeManager *NodeManager) {
 
 func withTagsClient(ctx context.Context, connection *vclib.VSphereConnection, f func(c *rest.Client) error) error {
 	c := rest.NewClient(connection.Client)
-	user := url.UserPassword(connection.Username, connection.Password)
-	if err := c.Login(ctx, user); err != nil {
+	signer, err := connection.Signer(ctx, connection.Client)
+	if err != nil {
 		return err
 	}
+	if signer == nil {
+		user := url.UserPassword(connection.Username, connection.Password)
+		err = c.Login(ctx, user)
+	} else {
+		err = c.LoginByToken(c.WithSigner(ctx, signer))
+	}
+	if err != nil {
+		return err
+	}
+
 	defer func() {
 		if err := c.Logout(ctx); err != nil {
 			klog.Errorf("failed to logout: %v", err)

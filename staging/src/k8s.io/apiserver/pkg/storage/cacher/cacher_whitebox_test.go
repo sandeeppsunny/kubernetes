@@ -45,12 +45,17 @@ import (
 // the writes to cacheWatcher.result channel is blocked.
 func TestCacheWatcherCleanupNotBlockedByResult(t *testing.T) {
 	var lock sync.RWMutex
+	var w *cacheWatcher
 	count := 0
 	filter := func(string, labels.Set, fields.Set) bool { return true }
-	forget := func(bool) {
+	forget := func() {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
+		// forget() has to stop the watcher, as only stopping the watcher
+		// triggers stopping the process() goroutine which we are in the
+		// end waiting for in this test.
+		w.stop()
 	}
 	initEvents := []*watchCacheEvent{
 		{Object: &v1.Pod{}},
@@ -58,7 +63,8 @@ func TestCacheWatcherCleanupNotBlockedByResult(t *testing.T) {
 	}
 	// set the size of the buffer of w.result to 0, so that the writes to
 	// w.result is blocked.
-	w := newCacheWatcher(0, 0, initEvents, filter, forget, testVersioner{})
+	w = newCacheWatcher(0, filter, forget, testVersioner{})
+	go w.process(context.Background(), initEvents, 0)
 	w.Stop()
 	if err := wait.PollImmediate(1*time.Second, 5*time.Second, func() (bool, error) {
 		lock.RLock()
@@ -73,7 +79,7 @@ func TestCacheWatcherHandlesFiltering(t *testing.T) {
 	filter := func(_ string, _ labels.Set, field fields.Set) bool {
 		return field["spec.nodeName"] == "host"
 	}
-	forget := func(bool) {}
+	forget := func() {}
 
 	testCases := []struct {
 		events   []*watchCacheEvent
@@ -176,7 +182,9 @@ TestCase:
 		for j := range testCase.events {
 			testCase.events[j].ResourceVersion = uint64(j) + 1
 		}
-		w := newCacheWatcher(0, 0, testCase.events, filter, forget, testVersioner{})
+
+		w := newCacheWatcher(0, filter, forget, testVersioner{})
+		go w.process(context.Background(), testCase.events, 0)
 		ch := w.ResultChan()
 		for j, event := range testCase.expected {
 			e := <-ch
@@ -245,10 +253,10 @@ func newTestCacher(s storage.Interface, cap int) (*Cacher, storage.Versioner) {
 		CacheCapacity:  cap,
 		Storage:        s,
 		Versioner:      testVersioner{},
-		Type:           &example.Pod{},
 		ResourcePrefix: prefix,
 		KeyFunc:        func(obj runtime.Object) (string, error) { return storage.NamespaceKeyFunc(prefix, obj) },
 		GetAttrsFunc:   func(obj runtime.Object) (labels.Set, fields.Set, error) { return nil, nil, nil },
+		NewFunc:        func() runtime.Object { return &example.Pod{} },
 		NewListFunc:    func() runtime.Object { return &example.PodList{} },
 		Codec:          codecs.LegacyCodec(examplev1.SchemeGroupVersion),
 	}
@@ -436,5 +444,43 @@ func TestWatcherNotGoingBackInTime(t *testing.T) {
 		case <-time.After(time.Second):
 			w2.Stop()
 		}
+	}
+}
+
+func TestCacheWatcherStoppedInAnotherGoroutine(t *testing.T) {
+	var w *cacheWatcher
+	done := make(chan struct{})
+	filter := func(string, labels.Set, fields.Set) bool { return true }
+	forget := func() {
+		w.stop()
+		done <- struct{}{}
+	}
+
+	maxRetriesToProduceTheRaceCondition := 1000
+	// Simulating the timer is fired and stopped concurrently by set time
+	// timeout to zero and run the Stop goroutine concurrently.
+	// May sure that the watch will not be blocked on Stop.
+	for i := 0; i < maxRetriesToProduceTheRaceCondition; i++ {
+		w = newCacheWatcher(0, filter, forget, testVersioner{})
+		go w.Stop()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("stop is blocked when the timer is fired concurrently")
+		}
+	}
+
+	// After that, verifies the cacheWatcher.process goroutine works correctly.
+	for i := 0; i < maxRetriesToProduceTheRaceCondition; i++ {
+		w = newCacheWatcher(2, filter, emptyFunc, testVersioner{})
+		w.input <- &watchCacheEvent{Object: &v1.Pod{}, ResourceVersion: uint64(i + 1)}
+		ctx, _ := context.WithTimeout(context.Background(), time.Hour)
+		go w.process(ctx, nil, 0)
+		select {
+		case <-w.ResultChan():
+		case <-time.After(time.Second):
+			t.Fatal("expected received a event on ResultChan")
+		}
+		w.Stop()
 	}
 }

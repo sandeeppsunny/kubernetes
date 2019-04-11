@@ -85,16 +85,16 @@ func SetBootstrapTokensDynamicDefaults(cfg *[]kubeadmapi.BootstrapToken) error {
 }
 
 // SetNodeRegistrationDynamicDefaults checks and sets configuration values for the NodeRegistration object
-func SetNodeRegistrationDynamicDefaults(cfg *kubeadmapi.NodeRegistrationOptions, masterTaint bool) error {
+func SetNodeRegistrationDynamicDefaults(cfg *kubeadmapi.NodeRegistrationOptions, ControlPlaneTaint bool) error {
 	var err error
 	cfg.Name, err = nodeutil.GetHostname(cfg.Name)
 	if err != nil {
 		return err
 	}
 
-	// Only if the slice is nil, we should append the master taint. This allows the user to specify an empty slice for no default master taint
-	if masterTaint && cfg.Taints == nil {
-		cfg.Taints = []v1.Taint{kubeadmconstants.MasterTaint}
+	// Only if the slice is nil, we should append the control-plane taint. This allows the user to specify an empty slice for no default control-plane taint
+	if ControlPlaneTaint && cfg.Taints == nil {
+		cfg.Taints = []v1.Taint{kubeadmconstants.ControlPlaneTaint}
 	}
 
 	if cfg.CRISocket == "" {
@@ -190,11 +190,7 @@ func LoadInitConfigurationFromFile(cfgPath string) (*kubeadmapi.InitConfiguratio
 		return nil, errors.Wrapf(err, "unable to read config from %q ", cfgPath)
 	}
 
-	internalcfg, err := BytesToInitConfiguration(b)
-	if err != nil {
-		return nil, err
-	}
-	return internalcfg, nil
+	return BytesToInitConfiguration(b)
 }
 
 // LoadOrDefaultInitConfiguration takes a path to a config file and a versioned configuration that can serve as the default config
@@ -222,18 +218,18 @@ func BytesToInitConfiguration(b []byte) (*kubeadmapi.InitConfiguration, error) {
 		return nil, err
 	}
 
-	return documentMapToInitConfiguration(gvkmap)
+	return documentMapToInitConfiguration(gvkmap, false)
 }
 
 // documentMapToInitConfiguration converts a map of GVKs and YAML documents to defaulted and validated configuration object.
-func documentMapToInitConfiguration(gvkmap map[schema.GroupVersionKind][]byte) (*kubeadmapi.InitConfiguration, error) {
+func documentMapToInitConfiguration(gvkmap map[schema.GroupVersionKind][]byte, allowDeprecated bool) (*kubeadmapi.InitConfiguration, error) {
 	var initcfg *kubeadmapi.InitConfiguration
 	var clustercfg *kubeadmapi.ClusterConfiguration
 	decodedComponentConfigObjects := map[componentconfigs.RegistrationKind]runtime.Object{}
 
 	for gvk, fileContent := range gvkmap {
-		// first, check if this GVK is supported one
-		if err := ValidateSupportedVersion(gvk.GroupVersion()); err != nil {
+		// first, check if this GVK is supported and possibly not deprecated
+		if err := validateSupportedVersion(gvk.GroupVersion(), allowDeprecated); err != nil {
 			return nil, err
 		}
 
